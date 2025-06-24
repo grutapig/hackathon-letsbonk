@@ -94,7 +94,7 @@ func main() {
 					tweets := []string{}
 					for _, tweet := range tweetRepliesResponse.Tweets {
 						{
-							tweets = append(tweets, tweet.Text)
+							tweets = append(tweets, tweet.Author.UserName+":"+tweet.Text)
 						}
 					}
 					for i, tweetReply := range tweetRepliesResponse.Tweets {
@@ -111,11 +111,12 @@ func main() {
 	go func() {
 		defer wg.Done()
 		for newMessage := range newMessageCh {
+			log.Println("Got a new message:", newMessage.Author.UserName, " - ", newMessage.Text)
 			messages := ClaudeMessages{}
 			for _, text := range newMessage.TweetsBefore {
 				messages = append(messages, ClaudeMessage{ROLE_USER, text})
 			}
-			messages = append(messages, ClaudeMessage{ROLE_USER, newMessage.Text})
+			messages = append(messages, ClaudeMessage{ROLE_USER, newMessage.Author.UserName + ":" + newMessage.Text})
 			messages = append(messages, ClaudeMessage{ROLE_ASSISTANT, "{"})
 			resp, err := claudeApi.SendMessage(messages, string(systemPromptFirstStep))
 			if err != nil {
@@ -156,7 +157,7 @@ func PrepareClaudeSecondStepRequest(lastMessages *UserLastTweetsResponse, follow
 	if lastMessages != nil && len(lastMessages.Data.Tweets) > 0 {
 		userMessages := make([]string, 0)
 		for _, tweet := range lastMessages.Data.Tweets {
-			userMessages = append(userMessages, tweet.Text)
+			userMessages = append(userMessages, tweet.CreatedAt+" - "+tweet.Text)
 		}
 		userMessagesJSON, _ := json.Marshal(userMessages)
 		claudeMessages = append(claudeMessages, ClaudeMessage{
@@ -200,7 +201,7 @@ func PrepareClaudeSecondStepRequest(lastMessages *UserLastTweetsResponse, follow
 	if threadMessages != nil && len(threadMessages.Tweets) > 0 {
 		message := []string{}
 		for _, tweet := range threadMessages.Tweets {
-			message = append(message, fmt.Sprintf("Author: %s\nText: %s", tweet.Author.UserName, tweet.Text))
+			message = append(message, fmt.Sprintf("@%s: %s (%s)", tweet.Author.UserName, tweet.Text, tweet.CreatedAt))
 		}
 		claudeMessages = append(claudeMessages, ClaudeMessage{
 			Role:    ROLE_USER,
@@ -240,8 +241,9 @@ type FirstStepClaudeResponse struct {
 func SendNewTweetToChannel(tweet Tweet, tweetsBefore []string, newMessageCh chan NewMessage, tweetsExistsStorage map[string]int) {
 	if _, ok := tweetsExistsStorage[tweet.Id]; !ok {
 		newMessageCh <- NewMessage{
-			MessageType: TWITTER_MESSAGE_TYPE_POST,
-			TweetID:     tweet.Id,
+			MessageType:  TWITTER_MESSAGE_TYPE_POST,
+			TweetID:      tweet.Id,
+			ReplyTweetID: tweet.InReplyToId,
 			Author: struct {
 				UserName string
 				Name     string

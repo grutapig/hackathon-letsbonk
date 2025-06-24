@@ -119,7 +119,7 @@ type Tweet struct {
 	Lang              string      `json:"lang"`
 	BookmarkCount     int         `json:"bookmarkCount"`
 	IsReply           bool        `json:"isReply"`
-	InReplyToId       interface{} `json:"inReplyToId"`
+	InReplyToId       string      `json:"inReplyToId"`
 	ConversationId    string      `json:"conversationId"`
 	InReplyToUserId   interface{} `json:"inReplyToUserId"`
 	InReplyToUsername interface{} `json:"inReplyToUsername"`

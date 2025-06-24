@@ -27,7 +27,7 @@ func TestTwitterAPIService_GetTweetReplies(t *testing.T) {
 	fmt.Println(tweetRepliesResponse.HasNextPage, tweetRepliesResponse.NextCursor)
 	assert.NoError(t, err)
 	for i, tweet := range tweetRepliesResponse.Tweets {
-		fmt.Println(i, tweet.Author.Name, " || ", tweet.Author.UserName, " || ", tweet.Text, tweet.ReplyCount, err)
+		fmt.Println(i, tweet.Author.Name, " || ", tweet.Author.UserName, " || ", tweet.Text, tweet.ReplyCount, "in reply to id||", tweet.InReplyToId, err)
 	}
 }
 func TestTwitterAPIService_GetTweetsByIds(t *testing.T) {
