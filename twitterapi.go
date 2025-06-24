@@ -8,11 +8,13 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"sync"
 	"time"
 )
+
+const TWITTER_MESSAGE_TYPE_POST = "post"
+const TWITTER_MESSAGE_TYPE_TWEET = "tweet"
 
 type TwitterAPIService struct {
 	apiKey         string
@@ -167,7 +169,7 @@ func (s *TwitterAPIService) GetUserFollowers(req UserFollowersRequest) (*UserFol
 		return nil, fmt.Errorf("error followers, status not 200: %s", string(response.RawBody))
 	}
 	userFollowersResponse := UserFollowersResponse{}
-	os.WriteFile("user_followers.json", response.RawBody, 0655)
+
 	err = json.Unmarshal(response.RawBody, &userFollowersResponse)
 	return &userFollowersResponse, err
 }

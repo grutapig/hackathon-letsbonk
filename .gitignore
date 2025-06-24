@@ -1,2 +1,4 @@
 .idea
-.env
+*.env
+prompt1.txt
+prompt2.txt
