@@ -30,6 +30,15 @@ func TestTwitterAPIService_GetTweetReplies(t *testing.T) {
 		fmt.Println(i, tweet.Author.Name, " || ", tweet.Author.UserName, " || ", tweet.Text, tweet.ReplyCount, err)
 	}
 }
+func TestTwitterAPIService_GetTweetsByIds(t *testing.T) {
+	godotenv.Load()
+	api := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
+	tweetRepliesResponse, err := api.GetTweetsByIds([]string{os.Getenv(ENV_DEMO_TWEET_ID)})
+	assert.NoError(t, err)
+	for i, tweet := range tweetRepliesResponse.Tweets {
+		fmt.Println(i, tweet.Author.Name, " || ", tweet.Author.UserName, " || ", tweet.Text, tweet.ReplyCount, err)
+	}
+}
 func TestTwitterAPIService_GetUserLastTweets(t *testing.T) {
 	godotenv.Load()
 	api := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))

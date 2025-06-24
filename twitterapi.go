@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -192,6 +193,25 @@ func (s *TwitterAPIService) GetUserFollowings(req UserFollowingsRequest) (*UserF
 	userFollowingsResponse := UserFollowingsResponse{}
 	err = json.Unmarshal(response.RawBody, &userFollowingsResponse)
 	return &userFollowingsResponse, err
+}
+
+func (s *TwitterAPIService) GetTweetsByIds(tweetIds []string) (*TweetsByIdsResponse, error) {
+	uri := s.baseUrl + "/twitter/tweets"
+
+	params := map[string]string{
+		"tweet_ids": strings.Join(tweetIds, ","),
+	}
+
+	response, err := s.makeRequest(uri, params)
+	if err != nil {
+		return nil, fmt.Errorf("error tweets_by_ids: %w", err)
+	}
+	if response.StatusCode != 200 {
+		return nil, fmt.Errorf("error tweets_by_ids, status non 200: %s", string(response.RawBody))
+	}
+	tweetsByIdsResponse := TweetsByIdsResponse{}
+	err = json.Unmarshal(response.RawBody, &tweetsByIdsResponse)
+	return &tweetsByIdsResponse, err
 }
 
 func (s *TwitterAPIService) StartCommunityMonitoring(communityID string, pollInterval time.Duration) chan NewMessage {

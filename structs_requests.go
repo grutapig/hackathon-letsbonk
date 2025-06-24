@@ -50,6 +50,7 @@ type NewMessage struct {
 	ReplyCount   int
 	LikeCount    int
 	RetweetCount int
+	TweetsBefore []string
 }
 
 const (
@@ -62,4 +63,10 @@ type TweetState struct {
 	ReplyCount int
 	LastCheck  time.Time
 	SinceTime  time.Time
+}
+
+type TweetsByIdsResponse struct {
+	Tweets  []Tweet `json:"tweets"`
+	Status  string  `json:"status"`
+	Message string  `json:"message"`
 }
