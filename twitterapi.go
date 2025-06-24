@@ -14,9 +14,6 @@ import (
 	"time"
 )
 
-const TWITTER_MESSAGE_TYPE_POST = "post"
-const TWITTER_MESSAGE_TYPE_TWEET = "tweet"
-
 type TwitterAPIService struct {
 	apiKey         string
 	httpClient     *http.Client
@@ -258,8 +255,7 @@ func (s *TwitterAPIService) checkForNewMessages(communityID string, messageChan 
 			s.tweetMutex.Unlock()
 
 			newMsg := NewMessage{
-				MessageType: MessageTypeNewPost,
-				TweetID:     tweet.Id,
+				TweetID: tweet.Id,
 				Author: struct {
 					UserName string
 					Name     string
@@ -322,7 +318,6 @@ func (s *TwitterAPIService) monitorTweetReplies(parentTweet Tweet, sinceTime tim
 			s.tweetMutex.Unlock()
 
 			newReplyMsg := NewMessage{
-				MessageType:  MessageTypeNewReply,
 				TweetID:      parentTweet.Id,
 				ReplyTweetID: tweet.Id,
 				Author: struct {

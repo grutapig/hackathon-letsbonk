@@ -241,7 +241,6 @@ type FirstStepClaudeResponse struct {
 func SendNewTweetToChannel(tweet Tweet, tweetsBefore []string, newMessageCh chan NewMessage, tweetsExistsStorage map[string]int) {
 	if _, ok := tweetsExistsStorage[tweet.Id]; !ok {
 		newMessageCh <- NewMessage{
-			MessageType:  TWITTER_MESSAGE_TYPE_POST,
 			TweetID:      tweet.Id,
 			ReplyTweetID: tweet.InReplyToId,
 			Author: struct {

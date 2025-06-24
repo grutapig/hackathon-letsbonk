@@ -32,7 +32,6 @@ type UserFollowingsRequest struct {
 }
 
 type NewMessage struct {
-	MessageType  string
 	TweetID      string
 	ReplyTweetID string
 	Author       struct {
