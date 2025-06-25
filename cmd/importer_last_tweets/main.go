@@ -4,7 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"github.com/grutapig/hackaton/twitterapi"
-	"github.com/stretchr/testify/assert"
+	"github.com/joho/godotenv"
 	"os"
 	"sort"
 	"strconv"
@@ -17,6 +17,7 @@ func panicErr(err error) {
 	}
 }
 func main() {
+	godotenv.Load("../.env")
 	r, err := os.OpenFile("community_tweets.csv", os.O_RDONLY, 0655)
 	panicErr(err)
 	cursor := csv.NewReader(r)
@@ -27,7 +28,7 @@ func main() {
 		authorsMap[row[0]] = true
 	}
 	fmt.Println(len(authorsMap))
-	api := twitterapi.NewTwitterAPIService()
+	api := twitterapi.NewTwitterAPIService(os.Getenv(twitterapi.ENV_TWITTER_API_KEY), os.Getenv(twitterapi.ENV_TWITTER_API_BASE_URL), os.Getenv(twitterapi.ENV_PROXY_DSN))
 	//os.RemoveAll("last_tweets.csv")
 	w, err := os.OpenFile("last_tweets.csv", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0655)
 	panicErr(err)
@@ -44,7 +45,7 @@ func main() {
 	authorsCh := make(chan string)
 	resultCh := make(chan struct {
 		string
-		UserLastTweetsResponse
+		twitterapi.UserLastTweetsResponse
 		error
 	})
 	wgParallel := sync.WaitGroup{}
@@ -53,10 +54,10 @@ func main() {
 		go func() {
 			defer wgParallel.Done()
 			for authorName := range authorsCh {
-				result, err := api.GetUserLastTweets(UserLastTweetsRequest{UserName: authorName, IncludeReplies: true})
+				result, err := api.GetUserLastTweets(twitterapi.UserLastTweetsRequest{UserName: authorName, IncludeReplies: true})
 				resultCh <- struct {
 					string
-					UserLastTweetsResponse
+					twitterapi.UserLastTweetsResponse
 					error
 				}{authorName, *result, err}
 			}
@@ -74,7 +75,7 @@ func main() {
 			result := resultStruct.UserLastTweetsResponse
 			err := resultStruct.error
 			authorName := resultStruct.string
-			assert.NoError(t, err, authorName)
+			panicErr(err)
 			fmt.Println(authorName, "found tweets", len(result.Data.Tweets))
 			for _, tweet := range result.Data.Tweets {
 				writer.Write([]string{tweet.Author.UserName, tweet.Author.Id, tweet.Id, tweet.Text, tweet.CreatedAt, strconv.Itoa(tweet.ReplyCount)})
