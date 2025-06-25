@@ -11,7 +11,8 @@ import (
 )
 
 func main() {
-	godotenv.Load("../.env")
+	err := godotenv.Load()
+	panicErr(err)
 	api := twitterapi.NewTwitterAPIService(os.Getenv(twitterapi.ENV_TWITTER_API_KEY), os.Getenv(twitterapi.ENV_TWITTER_API_BASE_URL), os.Getenv(twitterapi.ENV_PROXY_DSN))
 
 	os.RemoveAll("community_tweets.csv")

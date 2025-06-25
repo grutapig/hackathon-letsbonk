@@ -17,7 +17,8 @@ func panicErr(err error) {
 	}
 }
 func main() {
-	godotenv.Load("../.env")
+	err := godotenv.Load()
+	panicErr(err)
 	r, err := os.OpenFile("community_tweets.csv", os.O_RDONLY, 0655)
 	panicErr(err)
 	cursor := csv.NewReader(r)
