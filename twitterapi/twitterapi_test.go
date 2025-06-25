@@ -1,4 +1,4 @@
-package main
+package twitterapi
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 )
 
 func TestTwitterAPIService_GetCommunityTweets(t *testing.T) {
-	err := godotenv.Load()
+	err := godotenv.Load("../.env")
 	assert.NoError(t, err)
 	api := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
 	communityTweetsResponse, err := api.GetCommunityTweets(CommunityTweetsRequest{CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID), Cursor: ""})

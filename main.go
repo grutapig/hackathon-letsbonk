@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/grutapig/hackaton/twitterapi"
 	"github.com/joho/godotenv"
 	"log"
 	"os"
@@ -25,7 +26,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	twitterApi := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
+	twitterApi := twitterapi.NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
 	systemPromptFirstStep, err := os.ReadFile(PROMPT_FILE_STEP1)
 	if err != nil {
 		panic(err)
@@ -35,9 +36,9 @@ func main() {
 		panic(err)
 	}
 	//init channels
-	newMessageCh := make(chan NewMessage, 10)
+	newMessageCh := make(chan twitterapi.NewMessage, 10)
 	//flag channel is for second step
-	flagCh := make(chan NewMessage, 10)
+	flagCh := make(chan twitterapi.NewMessage, 10)
 
 	//start monitoring for new messages in community
 	wg := sync.WaitGroup{}
@@ -49,7 +50,7 @@ func main() {
 		tweetsExistsStorage := map[string]int{}
 		for {
 			time.Sleep(10 * time.Second)
-			tweetsResponse, err := twitterApi.GetCommunityTweets(CommunityTweetsRequest{
+			tweetsResponse, err := twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
 				CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
 			})
 			if err != nil {
@@ -61,7 +62,7 @@ func main() {
 				for _, tweet := range tweetsResponse.Tweets {
 					tweetsExistsStorage[tweet.Id] = tweet.ReplyCount
 					//last page is enough for monitoring
-					tweetRepliesResponse, err := twitterApi.GetTweetReplies(TweetRepliesRequest{
+					tweetRepliesResponse, err := twitterApi.GetTweetReplies(twitterapi.TweetRepliesRequest{
 						TweetID: tweet.Id,
 					})
 					if err != nil {
@@ -83,7 +84,7 @@ func main() {
 				if tweet.ReplyCount > tweetsExistsStorage[tweet.Id] {
 					tweetsExistsStorage[tweet.Id] = tweet.ReplyCount
 					//last page is enough for monitoring
-					tweetRepliesResponse, err := twitterApi.GetTweetReplies(TweetRepliesRequest{
+					tweetRepliesResponse, err := twitterApi.GetTweetReplies(twitterapi.TweetRepliesRequest{
 						TweetID: tweet.Id,
 					})
 					if err != nil {
@@ -136,10 +137,10 @@ func main() {
 	go func() {
 		defer wg.Done()
 		for newMessage := range flagCh {
-			lastMessages, err := twitterApi.GetUserLastTweets(UserLastTweetsRequest{UserId: newMessage.Author.ID})
-			followers, err := twitterApi.GetUserFollowers(UserFollowersRequest{UserName: newMessage.Author.UserName})
-			followings, err := twitterApi.GetUserFollowings(UserFollowingsRequest{UserName: newMessage.Author.UserName})
-			threadMessages, err := twitterApi.GetTweetReplies(TweetRepliesRequest{TweetID: newMessage.ReplyTweetID})
+			lastMessages, err := twitterApi.GetUserLastTweets(twitterapi.UserLastTweetsRequest{UserId: newMessage.Author.ID})
+			followers, err := twitterApi.GetUserFollowers(twitterapi.UserFollowersRequest{UserName: newMessage.Author.UserName})
+			followings, err := twitterApi.GetUserFollowings(twitterapi.UserFollowingsRequest{UserName: newMessage.Author.UserName})
+			threadMessages, err := twitterApi.GetTweetReplies(twitterapi.TweetRepliesRequest{TweetID: newMessage.ReplyTweetID})
 			postMessage, err := twitterApi.GetTweetsByIds([]string{newMessage.ReplyTweetID})
 			//prepare claude request
 			claudeMessages := PrepareClaudeSecondStepRequest(lastMessages, followers, followings, threadMessages, postMessage)
@@ -150,7 +151,7 @@ func main() {
 	wg.Wait()
 }
 
-func PrepareClaudeSecondStepRequest(lastMessages *UserLastTweetsResponse, followers *UserFollowersResponse, followings *UserFollowingsResponse, threadMessages *TweetRepliesResponse, postMessage *TweetsByIdsResponse) ClaudeMessages {
+func PrepareClaudeSecondStepRequest(lastMessages *twitterapi.UserLastTweetsResponse, followers *twitterapi.UserFollowersResponse, followings *twitterapi.UserFollowingsResponse, threadMessages *twitterapi.TweetRepliesResponse, postMessage *twitterapi.TweetsByIdsResponse) ClaudeMessages {
 	claudeMessages := ClaudeMessages{}
 
 	// 1. User's messages from personal page
@@ -238,9 +239,9 @@ type FirstStepClaudeResponse struct {
 	Reason          string `json:"reason"`
 }
 
-func SendNewTweetToChannel(tweet Tweet, tweetsBefore []string, newMessageCh chan NewMessage, tweetsExistsStorage map[string]int) {
+func SendNewTweetToChannel(tweet twitterapi.Tweet, tweetsBefore []string, newMessageCh chan twitterapi.NewMessage, tweetsExistsStorage map[string]int) {
 	if _, ok := tweetsExistsStorage[tweet.Id]; !ok {
-		newMessageCh <- NewMessage{
+		newMessageCh <- twitterapi.NewMessage{
 			TweetID:      tweet.Id,
 			ReplyTweetID: tweet.InReplyToId,
 			Author: struct {

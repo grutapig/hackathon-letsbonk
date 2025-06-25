@@ -1,4 +1,4 @@
-package main
+package twitterapi
 
 import (
 	"crypto/tls"

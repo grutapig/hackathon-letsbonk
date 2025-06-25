@@ -1,4 +1,4 @@
-package main
+package twitterapi
 
 type APIResponse struct {
 	StatusCode int                 `json:"status_code"`
