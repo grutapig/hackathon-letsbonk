@@ -27,6 +27,15 @@ func main() {
 		panic(err)
 	}
 	twitterApi := twitterapi.NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
+	notificationFormatter := NewNotificationFormatter()
+	telegramService, err := NewTelegramService(os.Getenv(ENV_TELEGRAM_API_KEY), os.Getenv(ENV_PROXY_DSN), os.Getenv(ENV_TELEGRAM_ADMIN_CHAT_ID), notificationFormatter)
+	if err != nil {
+		panic(err)
+	}
+
+	// Start Telegram service
+	telegramService.StartListening()
+
 	systemPromptFirstStep, err := os.ReadFile(PROMPT_FILE_STEP1)
 	if err != nil {
 		panic(err)
@@ -39,6 +48,8 @@ func main() {
 	newMessageCh := make(chan twitterapi.NewMessage, 10)
 	//flag channel is for second step
 	flagCh := make(chan twitterapi.NewMessage, 10)
+	//notification channel
+	notificationCh := make(chan FUDAlertNotification, 10)
 
 	//start monitoring for new messages in community
 	wg := sync.WaitGroup{}
@@ -49,7 +60,7 @@ func main() {
 		//local storage exists messages, with reply counts
 		tweetsExistsStorage := map[string]int{}
 		for {
-			time.Sleep(10 * time.Second)
+			time.Sleep(1 * time.Second)
 			tweetsResponse, err := twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
 				CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
 			})
@@ -145,7 +156,43 @@ func main() {
 			//prepare claude request
 			claudeMessages := PrepareClaudeSecondStepRequest(lastMessages, followers, followings, threadMessages, postMessage)
 			resp, err := claudeApi.SendMessage(claudeMessages, string(systemPromptSecondStep)+"analyzed user is "+newMessage.Author.UserName)
+			aiDecision2 := SecondStepClaudeResponse{}
 			fmt.Println("claude make a decision for this user:", resp, err)
+			err = json.Unmarshal([]byte("{"+resp.Content[0].Text), &aiDecision2)
+			fmt.Println(aiDecision2)
+			if aiDecision2.IsFUDMessage {
+				// Create FUD alert notification
+				alert := FUDAlertNotification{
+					FUDMessageID:      newMessage.TweetID,
+					FUDUserID:         newMessage.Author.ID,
+					FUDUsername:       newMessage.Author.UserName,
+					ThreadID:          newMessage.ReplyTweetID,
+					DetectedAt:        time.Now().Format(time.RFC3339),
+					AlertSeverity:     notificationFormatter.mapRiskLevelToSeverity(aiDecision2.UserRiskLevel),
+					FUDType:           aiDecision2.FUDType,
+					FUDProbability:    aiDecision2.FUDProbability,
+					MessagePreview:    newMessage.Text,
+					RecommendedAction: notificationFormatter.getRecommendedAction(aiDecision2),
+					KeyEvidence:       aiDecision2.KeyEvidence,
+					DecisionReason:    aiDecision2.DecisionReason,
+				}
+				notificationCh <- alert
+			}
+
+		}
+	}()
+	//notification handler
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for alert := range notificationCh {
+			log.Printf("FUD Alert: %s (@%s) - %s", alert.FUDType, alert.FUDUsername, alert.AlertSeverity)
+
+			// Store and broadcast notification with detail command
+			err := telegramService.StoreAndBroadcastNotification(alert)
+			if err != nil {
+				log.Printf("Failed to send Telegram notification: %v", err)
+			}
 		}
 	}()
 	wg.Wait()
@@ -229,7 +276,10 @@ func PrepareClaudeSecondStepRequest(lastMessages *twitterapi.UserLastTweetsRespo
 			Content: "ORIGINAL THREAD POST: Not found",
 		})
 	}
-
+	claudeMessages = append(claudeMessages, ClaudeMessage{
+		Role:    ROLE_ASSISTANT,
+		Content: "{",
+	})
 	return claudeMessages
 }
 
@@ -237,6 +287,15 @@ type FirstStepClaudeResponse struct {
 	IsFlag          bool   `json:"is_flag"`
 	FlagProbability int    `json:"flag_probability"`
 	Reason          string `json:"reason"`
+}
+type SecondStepClaudeResponse struct {
+	IsFUDMessage   bool     `json:"is_fud_message"`
+	IsFUDUser      bool     `json:"is_fud_user"`
+	FUDProbability float64  `json:"fud_probability"` // 0.0 - 1.0
+	FUDType        string   `json:"fud_type"`        // "professional_trojan_horse", "professional_direct_attack", "professional_statistical", "emotional_escalation", "emotional_dramatic_exit", "casual_criticism", "none"
+	UserRiskLevel  string   `json:"user_risk_level"` // "critical", "high", "medium", "low"
+	KeyEvidence    []string `json:"key_evidence"`    // 2-4 most important evidence points
+	DecisionReason string   `json:"decision_reason"` // 1-2 sentence summary of why this decision was made
 }
 
 func SendNewTweetToChannel(tweet twitterapi.Tweet, tweetsBefore []string, newMessageCh chan twitterapi.NewMessage, tweetsExistsStorage map[string]int) {
