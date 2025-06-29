@@ -33,6 +33,10 @@ func main() {
 		panic(err)
 	}
 
+	// Initialize user status manager
+	userStatusManager := NewUserStatusManager()
+	userStatusManager.StartPeriodicSave()
+
 	// Start Telegram service
 	telegramService.StartListening()
 
@@ -124,6 +128,64 @@ func main() {
 		defer wg.Done()
 		for newMessage := range newMessageCh {
 			log.Println("Got a new message:", newMessage.Author.UserName, " - ", newMessage.Text)
+
+			// Check if user is already confirmed FUD
+			if userStatusManager.IsFUDUser(newMessage.Author.ID) {
+				log.Printf("User %s is already confirmed FUD, analyzing message only", newMessage.Author.UserName)
+
+				// Analyze only the message with first step
+				messages := ClaudeMessages{}
+				for _, text := range newMessage.TweetsBefore {
+					messages = append(messages, ClaudeMessage{ROLE_USER, text})
+				}
+				messages = append(messages, ClaudeMessage{ROLE_USER, newMessage.Author.UserName + ":" + newMessage.Text})
+				messages = append(messages, ClaudeMessage{ROLE_ASSISTANT, "{"})
+				resp, err := claudeApi.SendMessage(messages, string(systemPromptFirstStep))
+				if err != nil {
+					log.Printf("error claude: %s", err)
+					continue
+				}
+
+				aiDecision := FirstStepClaudeResponse{}
+				err = json.Unmarshal([]byte("{"+resp.Content[0].Text), &aiDecision)
+				if err != nil {
+					log.Printf("error unmarshaling claude response: %s", err)
+					continue
+				}
+
+				if aiDecision.IsFlag {
+					// Create notification for known FUD user's new FUD message
+					userInfo := userStatusManager.GetUserInfo(newMessage.Author.ID)
+					alert := FUDAlertNotification{
+						FUDMessageID:      newMessage.TweetID,
+						FUDUserID:         newMessage.Author.ID,
+						FUDUsername:       newMessage.Author.UserName,
+						ThreadID:          newMessage.ReplyTweetID,
+						DetectedAt:        time.Now().Format(time.RFC3339),
+						AlertSeverity:     "high", // Known FUD user posting more FUD
+						FUDType:           userInfo.FUDType,
+						FUDProbability:    userInfo.FUDProbability,
+						MessagePreview:    newMessage.Text,
+						RecommendedAction: "MONITOR_KNOWN_FUD_USER",
+						KeyEvidence:       []string{"Known FUD user", "Previous FUD confirmed"},
+						DecisionReason:    "User previously confirmed as FUD, new message flagged by first step analysis",
+					}
+
+					// Mark this as another FUD message from this user
+					userStatusManager.MarkUserAsFUD(newMessage.Author.ID, newMessage.Author.UserName, newMessage.TweetID, userInfo.FUDType, userInfo.FUDProbability)
+
+					notificationCh <- alert
+				}
+				continue
+			}
+
+			// Skip if user is already being analyzed
+			if userStatusManager.IsUserBeingAnalyzed(newMessage.Author.ID) {
+				log.Printf("User %s is already being analyzed, skipping", newMessage.Author.UserName)
+				continue
+			}
+
+			// First step analysis for new or clean users
 			messages := ClaudeMessages{}
 			for _, text := range newMessage.TweetsBefore {
 				messages = append(messages, ClaudeMessage{ROLE_USER, text})
@@ -140,6 +202,8 @@ func main() {
 			err = json.Unmarshal([]byte("{"+resp.Content[0].Text), &aiDecision)
 			fmt.Println(aiDecision)
 			if aiDecision.IsFlag {
+				// Mark user as being analyzed to prevent duplicate analysis
+				userStatusManager.SetUserAnalyzing(newMessage.Author.ID, newMessage.Author.UserName)
 				flagCh <- newMessage
 			}
 		}
@@ -154,12 +218,15 @@ func main() {
 			threadMessages, err := twitterApi.GetTweetReplies(twitterapi.TweetRepliesRequest{TweetID: newMessage.ReplyTweetID})
 			postMessage, err := twitterApi.GetTweetsByIds([]string{newMessage.ReplyTweetID})
 			//prepare claude request
-			claudeMessages := PrepareClaudeSecondStepRequest(lastMessages, followers, followings, threadMessages, postMessage)
+			claudeMessages := PrepareClaudeSecondStepRequest(lastMessages, followers, followings, threadMessages, postMessage, userStatusManager)
 			resp, err := claudeApi.SendMessage(claudeMessages, string(systemPromptSecondStep)+"analyzed user is "+newMessage.Author.UserName)
 			aiDecision2 := SecondStepClaudeResponse{}
 			fmt.Println("claude make a decision for this user:", resp, err)
 			err = json.Unmarshal([]byte("{"+resp.Content[0].Text), &aiDecision2)
 			fmt.Println(aiDecision2)
+			// Update user status after analysis
+			userStatusManager.UpdateUserAfterAnalysis(newMessage.Author.ID, newMessage.Author.UserName, aiDecision2, newMessage.TweetID)
+
 			if aiDecision2.IsFUDMessage {
 				// Create FUD alert notification
 				alert := FUDAlertNotification{
@@ -195,10 +262,12 @@ func main() {
 			}
 		}
 	}()
+	// Cleanup
+	defer userStatusManager.StopPeriodicSave()
 	wg.Wait()
 }
 
-func PrepareClaudeSecondStepRequest(lastMessages *twitterapi.UserLastTweetsResponse, followers *twitterapi.UserFollowersResponse, followings *twitterapi.UserFollowingsResponse, threadMessages *twitterapi.TweetRepliesResponse, postMessage *twitterapi.TweetsByIdsResponse) ClaudeMessages {
+func PrepareClaudeSecondStepRequest(lastMessages *twitterapi.UserLastTweetsResponse, followers *twitterapi.UserFollowersResponse, followings *twitterapi.UserFollowingsResponse, threadMessages *twitterapi.TweetRepliesResponse, postMessage *twitterapi.TweetsByIdsResponse, userStatusManager *UserStatusManager) ClaudeMessages {
 	claudeMessages := ClaudeMessages{}
 
 	// 1. User's messages from personal page
@@ -219,7 +288,7 @@ func PrepareClaudeSecondStepRequest(lastMessages *twitterapi.UserLastTweetsRespo
 		})
 	}
 
-	// 2. All user's friends (usernames only)
+	// 2. All user's friends with FUD analysis
 	allFriends := make([]string, 0)
 	if followers != nil {
 		for _, follower := range followers.Followers {
@@ -233,15 +302,24 @@ func PrepareClaudeSecondStepRequest(lastMessages *twitterapi.UserLastTweetsRespo
 	}
 
 	if len(allFriends) > 0 {
-		friendsJSON, _ := json.Marshal(allFriends)
+		totalFriends, fudFriends, fudFriendsList := userStatusManager.GetFUDFriendsAnalysis(allFriends)
+
+		friendsAnalysis := map[string]interface{}{
+			"total_friends":       totalFriends,
+			"fud_friends":         fudFriends,
+			"fud_percentage":      float64(fudFriends) / float64(totalFriends) * 100,
+			"fud_friends_details": fudFriendsList,
+		}
+
+		friendsJSON, _ := json.Marshal(friendsAnalysis)
 		claudeMessages = append(claudeMessages, ClaudeMessage{
 			Role:    ROLE_USER,
-			Content: fmt.Sprintf("ALL USER'S FRIENDS (USERNAMES):\n%s", string(friendsJSON)),
+			Content: fmt.Sprintf("USER'S FRIENDS FUD ANALYSIS:\n%s", string(friendsJSON)),
 		})
 	} else {
 		claudeMessages = append(claudeMessages, ClaudeMessage{
 			Role:    ROLE_USER,
-			Content: "ALL USER'S FRIENDS (USERNAMES): No friends",
+			Content: "USER'S FRIENDS FUD ANALYSIS: No friends found",
 		})
 	}
 
