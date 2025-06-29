@@ -65,42 +65,6 @@ type Author struct {
 	} `json:"affiliatesHighlightedLabel"`
 	PossiblySensitive bool     `json:"possiblySensitive"`
 	PinnedTweetIds    []string `json:"pinnedTweetIds"`
-	ProfileBio        struct {
-		Description string `json:"description"`
-		Entities    struct {
-			Description struct {
-				Symbols []struct {
-					Indices []int  `json:"indices"`
-					Text    string `json:"text"`
-				} `json:"symbols,omitempty"`
-				Urls []struct {
-					DisplayUrl  string `json:"display_url"`
-					ExpandedUrl string `json:"expanded_url"`
-					Indices     []int  `json:"indices"`
-					Url         string `json:"url"`
-				} `json:"urls,omitempty"`
-				UserMentions []struct {
-					IdStr      string `json:"id_str"`
-					Indices    []int  `json:"indices"`
-					Name       string `json:"name"`
-					ScreenName string `json:"screen_name"`
-				} `json:"user_mentions,omitempty"`
-				Hashtags []struct {
-					Indices []int  `json:"indices"`
-					Text    string `json:"text"`
-				} `json:"hashtags,omitempty"`
-			} `json:"description"`
-			Url struct {
-				Urls []struct {
-					DisplayUrl  string `json:"display_url"`
-					ExpandedUrl string `json:"expanded_url"`
-					Indices     []int  `json:"indices"`
-					Url         string `json:"url"`
-				} `json:"urls"`
-			} `json:"url,omitempty"`
-		} `json:"entities"`
-		WithheldInCountries []interface{} `json:"withheld_in_countries"`
-	} `json:"profile_bio"`
 }
 
 type Tweet struct {

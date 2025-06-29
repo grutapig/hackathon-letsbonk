@@ -46,6 +46,11 @@ type NewMessage struct {
 		Author string
 		Text   string
 	}
+	GrandParentTweet struct {
+		ID     string
+		Author string
+		Text   string
+	}
 	ReplyCount   int
 	LikeCount    int
 	RetweetCount int

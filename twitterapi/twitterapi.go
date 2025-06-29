@@ -149,6 +149,28 @@ func (s *TwitterAPIService) GetTweetReplies(req TweetRepliesRequest) (*TweetRepl
 	err = json.Unmarshal(response.RawBody, &tweetRepliesResponse)
 	return &tweetRepliesResponse, err
 }
+func (s *TwitterAPIService) GetTweetThreadContext(req TweetRepliesRequest) (*TweetRepliesResponse, error) {
+	uri := s.baseUrl + "/twitter/tweet/thread_context"
+
+	params := map[string]string{
+		"tweetId": req.TweetID,
+		"cursor":  req.Cursor,
+	}
+	if req.SinceTime > 0 {
+		params["sinceTime"] = strconv.Itoa(int(req.SinceTime))
+	}
+
+	response, err := s.makeRequest(uri, params)
+	if err != nil {
+		return nil, fmt.Errorf("error last tweets: %w", err)
+	}
+	if response.StatusCode != 200 {
+		return nil, fmt.Errorf("error last tweets, status non 200: %s", string(response.RawBody))
+	}
+	tweetRepliesResponse := TweetRepliesResponse{}
+	err = json.Unmarshal(response.RawBody, &tweetRepliesResponse)
+	return &tweetRepliesResponse, err
+}
 func (s *TwitterAPIService) GetUserFollowers(req UserFollowersRequest) (*UserFollowersResponse, error) {
 	uri := s.baseUrl + "/twitter/user/followers"
 

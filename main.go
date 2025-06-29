@@ -8,7 +8,6 @@ import (
 	"log"
 	"os"
 	"sync"
-	"time"
 )
 
 const ENV_PROD_CONFIG = ".env"
@@ -63,153 +62,24 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		defer close(newMessageCh)
-		//local storage exists messages, with reply counts
-		tweetsExistsStorage := map[string]int{}
-		for {
-			time.Sleep(1 * time.Second)
-			tweetsResponse, err := twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
-				CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
-			})
-			if err != nil {
-				log.Println(err)
-				continue
-			}
-			//region fill exists storage; first time we just fill storage
-			if len(tweetsExistsStorage) == 0 {
-				for _, tweet := range tweetsResponse.Tweets {
-					tweetsExistsStorage[tweet.Id] = tweet.ReplyCount
-					//last page is enough for monitoring
-					tweetRepliesResponse, err := twitterApi.GetTweetReplies(twitterapi.TweetRepliesRequest{
-						TweetID: tweet.Id,
-					})
-					if err != nil {
-						//first step we don't handle any errors, debug is enough
-						log.Printf("error on gettings replies for tweet, ERR: %s, TWEET ID: %s, TEXT: %s, AUTHOR: %s", err, tweet.Id, tweet.Text, tweet.Author.Name)
-						continue
-					}
-					for _, tweetReply := range tweetRepliesResponse.Tweets {
-						tweetsExistsStorage[tweetReply.Id] = tweetReply.ReplyCount
-					}
-				}
-				log.Println("filled storage", len(tweetsExistsStorage))
-				continue
-			}
-			//endregion
-			//region start monitoring
-			for _, tweet := range tweetsResponse.Tweets {
-				SendIfNotExistsTweetToChannel(tweet, []string{}, newMessageCh, tweetsExistsStorage, twitterapi.Tweet{})
-				if tweet.ReplyCount > tweetsExistsStorage[tweet.Id] {
-					tweetsExistsStorage[tweet.Id] = tweet.ReplyCount
-					//last page is enough for monitoring
-					tweetRepliesResponse, err := twitterApi.GetTweetReplies(twitterapi.TweetRepliesRequest{
-						TweetID: tweet.Id,
-					})
-					if err != nil {
-						//first step we don't handle any errors, debug is enough
-						log.Printf("error on gettings replies for tweet, ERR: %s, TWEET ID: %s, TEXT: %s, AUTHOR: %s", err, tweet.Id, tweet.Text, tweet.Author.Name)
-						continue
-					}
-					tweets := []string{}
-					for _, tweet := range tweetRepliesResponse.Tweets {
-						{
-							tweets = append(tweets, tweet.Author.UserName+":"+tweet.Text)
-						}
-					}
-					for i, tweetReply := range tweetRepliesResponse.Tweets {
-						SendIfNotExistsTweetToChannel(tweetReply, tweets[i:], newMessageCh, tweetsExistsStorage, tweet)
-						tweetsExistsStorage[tweetReply.Id] = tweetReply.ReplyCount
-					}
-				}
-				tweetsExistsStorage[tweet.Id] = tweet.ReplyCount
-			}
-		}
+		MonitoringHandler(twitterApi, newMessageCh)
 	}()
 	//handle new message first step
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for newMessage := range newMessageCh {
-			log.Println("Got a new message:", newMessage.Author.UserName, " - ", newMessage.Text, "reply to:", newMessage.ParentTweet.Text)
-
-			// First step analysis for new or clean users
-			messages := ClaudeMessages{}
-			messages = append(messages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
-			messages = append(messages, ClaudeMessage{ROLE_USER, "user reply is:  " + newMessage.Author.UserName + ":" + newMessage.Text})
-			messages = append(messages, ClaudeMessage{ROLE_ASSISTANT, "{"})
-			resp, err := claudeApi.SendMessage(messages, fmt.Sprintf("%s\n<instruction>you must analyze %s user messages</instruction>", string(systemPromptFirstStep), newMessage.Author.UserName))
-			if err != nil {
-				log.Printf("error claude: %s", err)
-				continue
-			}
-			fmt.Println(resp.Content[0].Text)
-			aiDecision := FirstStepClaudeResponse{}
-			err = json.Unmarshal([]byte("{"+resp.Content[0].Text), &aiDecision)
-			fmt.Println("ai decision", aiDecision, resp.Content[0].Text)
-			if aiDecision.IsFud {
-				// Mark user as being analyzed to prevent duplicate analysis
-				userStatusManager.SetUserAnalyzing(newMessage.Author.ID, newMessage.Author.UserName)
-				fudChannel <- newMessage
-			}
-		}
+		FirstStepHandler(newMessageCh, fudChannel, claudeApi, twitterApi, systemPromptFirstStep, userStatusManager)
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for newMessage := range fudChannel {
-			// Get user's ticker mentions using advanced search (max 3 pages)
-			userTickerMentions := getUserTickerMentions(twitterApi, newMessage.Author.UserName, ticker)
-			followers, err := twitterApi.GetUserFollowers(twitterapi.UserFollowersRequest{UserName: newMessage.Author.UserName})
-			followings, err := twitterApi.GetUserFollowings(twitterapi.UserFollowingsRequest{UserName: newMessage.Author.UserName})
-			//prepare claude request
-			claudeMessages := PrepareClaudeSecondStepRequest(userTickerMentions, followers, followings, userStatusManager)
-			claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
-			claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "user reply is:  " + newMessage.Author.UserName + ":" + newMessage.Text})
-			claudeMessages = append(claudeMessages, ClaudeMessage{Role: ROLE_ASSISTANT, Content: "{"})
-
-			fmt.Println("send to analyze:", claudeMessages)
-			resp, err := claudeApi.SendMessage(claudeMessages, string(systemPromptSecondStep)+"analyzed user is "+newMessage.Author.UserName)
-			aiDecision2 := SecondStepClaudeResponse{}
-			fmt.Println("claude make a decision for this user:", resp, err)
-			err = json.Unmarshal([]byte("{"+resp.Content[0].Text), &aiDecision2)
-			fmt.Println(aiDecision2)
-			// Update user status after analysis
-			userStatusManager.UpdateUserAfterAnalysis(newMessage.Author.ID, newMessage.Author.UserName, aiDecision2, newMessage.TweetID)
-
-			if aiDecision2.IsFUDMessage {
-				// Create FUD alert notification
-				alert := FUDAlertNotification{
-					FUDMessageID:      newMessage.TweetID,
-					FUDUserID:         newMessage.Author.ID,
-					FUDUsername:       newMessage.Author.UserName,
-					ThreadID:          newMessage.ReplyTweetID,
-					DetectedAt:        time.Now().Format(time.RFC3339),
-					AlertSeverity:     notificationFormatter.mapRiskLevelToSeverity(aiDecision2.UserRiskLevel),
-					FUDType:           aiDecision2.FUDType,
-					FUDProbability:    aiDecision2.FUDProbability,
-					MessagePreview:    newMessage.Text,
-					RecommendedAction: notificationFormatter.getRecommendedAction(aiDecision2),
-					KeyEvidence:       aiDecision2.KeyEvidence,
-					DecisionReason:    aiDecision2.DecisionReason,
-				}
-				notificationCh <- alert
-			}
-
-		}
+		SecondStepHandler(fudChannel, notificationCh, twitterApi, claudeApi, systemPromptSecondStep, userStatusManager, ticker)
 	}()
 	//notification handler
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for alert := range notificationCh {
-			log.Printf("FUD Alert: %s (@%s) - %s", alert.FUDType, alert.FUDUsername, alert.AlertSeverity)
-
-			// Store and broadcast notification with detail command
-			err := telegramService.StoreAndBroadcastNotification(alert)
-			if err != nil {
-				log.Printf("Failed to send Telegram notification: %v", err)
-			}
-		}
+		NotificationHandler(notificationCh, telegramService)
 	}()
 	// Cleanup
 	defer userStatusManager.StopPeriodicSave()
@@ -406,7 +276,7 @@ func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username st
 	return result
 }
 
-func SendIfNotExistsTweetToChannel(tweet twitterapi.Tweet, tweetsBefore []string, newMessageCh chan twitterapi.NewMessage, tweetsExistsStorage map[string]int, parentTweet twitterapi.Tweet) {
+func SendIfNotExistsTweetToChannel(tweet twitterapi.Tweet, tweetsBefore []string, newMessageCh chan twitterapi.NewMessage, tweetsExistsStorage map[string]int, parentTweet twitterapi.Tweet, grandParentTweet twitterapi.Tweet) {
 	if _, ok := tweetsExistsStorage[tweet.Id]; !ok {
 		newMessageCh <- twitterapi.NewMessage{
 			TweetID:      tweet.Id,
@@ -421,6 +291,11 @@ func SendIfNotExistsTweetToChannel(tweet twitterapi.Tweet, tweetsBefore []string
 				Author string
 				Text   string
 			}{ID: parentTweet.Id, Author: parentTweet.Author.UserName, Text: parentTweet.Text},
+			GrandParentTweet: struct {
+				ID     string
+				Author string
+				Text   string
+			}{ID: grandParentTweet.Id, Author: grandParentTweet.Author.UserName, Text: grandParentTweet.Text},
 			Text:         tweet.Text,
 			CreatedAt:    tweet.CreatedAt,
 			ReplyCount:   tweet.ReplyCount,
