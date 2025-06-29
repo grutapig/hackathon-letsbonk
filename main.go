@@ -7,14 +7,13 @@ import (
 	"github.com/joho/godotenv"
 	"log"
 	"os"
-	"strings"
 	"sync"
 	"time"
 )
 
 const ENV_PROD_CONFIG = ".env"
 const ENV_DEV_CONFIG = ".dev.env"
-const PROMPT_FILE_STEP1 = "prompt1.txt"
+const PROMPT_FILE_STEP1 = "prompt_simple.txt"
 const PROMPT_FILE_STEP2 = "prompt2.txt"
 
 func main() {
@@ -25,6 +24,10 @@ func main() {
 	claudeApi, err := NewClaudeClient(os.Getenv(ENV_CLAUDE_API_KEY), os.Getenv(ENV_PROXY_CLAUDE_DSN), CLAUDE_MODEL)
 	if err != nil {
 		panic(err)
+	}
+	ticker := os.Getenv(ENV_TWITTER_COMMUNITY_TICKER)
+	if ticker == "" {
+		panic("ticker should be set .env: " + ENV_TWITTER_COMMUNITY_TICKER)
 	}
 	twitterApi := twitterapi.NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
 	notificationFormatter := NewNotificationFormatter()
@@ -50,8 +53,8 @@ func main() {
 	}
 	//init channels
 	newMessageCh := make(chan twitterapi.NewMessage, 10)
-	//flag channel is for second step
-	flagCh := make(chan twitterapi.NewMessage, 10)
+	//fud channel is for second step
+	fudChannel := make(chan twitterapi.NewMessage, 10)
 	//notification channel
 	notificationCh := make(chan FUDAlertNotification, 10)
 
@@ -95,7 +98,7 @@ func main() {
 			//endregion
 			//region start monitoring
 			for _, tweet := range tweetsResponse.Tweets {
-				SendNewTweetToChannel(tweet, []string{}, newMessageCh, tweetsExistsStorage)
+				SendIfNotExistsTweetToChannel(tweet, []string{}, newMessageCh, tweetsExistsStorage, twitterapi.Tweet{})
 				if tweet.ReplyCount > tweetsExistsStorage[tweet.Id] {
 					tweetsExistsStorage[tweet.Id] = tweet.ReplyCount
 					//last page is enough for monitoring
@@ -114,7 +117,7 @@ func main() {
 						}
 					}
 					for i, tweetReply := range tweetRepliesResponse.Tweets {
-						SendNewTweetToChannel(tweetReply, tweets[i:], newMessageCh, tweetsExistsStorage)
+						SendIfNotExistsTweetToChannel(tweetReply, tweets[i:], newMessageCh, tweetsExistsStorage, tweet)
 						tweetsExistsStorage[tweetReply.Id] = tweetReply.ReplyCount
 					}
 				}
@@ -127,72 +130,14 @@ func main() {
 	go func() {
 		defer wg.Done()
 		for newMessage := range newMessageCh {
-			log.Println("Got a new message:", newMessage.Author.UserName, " - ", newMessage.Text)
-
-			// Check if user is already confirmed FUD
-			if userStatusManager.IsFUDUser(newMessage.Author.ID) {
-				log.Printf("User %s is already confirmed FUD, analyzing message only", newMessage.Author.UserName)
-
-				// Analyze only the message with first step
-				messages := ClaudeMessages{}
-				for _, text := range newMessage.TweetsBefore {
-					messages = append(messages, ClaudeMessage{ROLE_USER, text})
-				}
-				messages = append(messages, ClaudeMessage{ROLE_USER, newMessage.Author.UserName + ":" + newMessage.Text})
-				messages = append(messages, ClaudeMessage{ROLE_ASSISTANT, "{"})
-				resp, err := claudeApi.SendMessage(messages, string(systemPromptFirstStep))
-				if err != nil {
-					log.Printf("error claude: %s", err)
-					continue
-				}
-
-				aiDecision := FirstStepClaudeResponse{}
-				err = json.Unmarshal([]byte("{"+resp.Content[0].Text), &aiDecision)
-				if err != nil {
-					log.Printf("error unmarshaling claude response: %s", err)
-					continue
-				}
-
-				if aiDecision.IsFlag {
-					// Create notification for known FUD user's new FUD message
-					userInfo := userStatusManager.GetUserInfo(newMessage.Author.ID)
-					alert := FUDAlertNotification{
-						FUDMessageID:      newMessage.TweetID,
-						FUDUserID:         newMessage.Author.ID,
-						FUDUsername:       newMessage.Author.UserName,
-						ThreadID:          newMessage.ReplyTweetID,
-						DetectedAt:        time.Now().Format(time.RFC3339),
-						AlertSeverity:     "high", // Known FUD user posting more FUD
-						FUDType:           userInfo.FUDType,
-						FUDProbability:    userInfo.FUDProbability,
-						MessagePreview:    newMessage.Text,
-						RecommendedAction: "MONITOR_KNOWN_FUD_USER",
-						KeyEvidence:       []string{"Known FUD user", "Previous FUD confirmed"},
-						DecisionReason:    "User previously confirmed as FUD, new message flagged by first step analysis",
-					}
-
-					// Mark this as another FUD message from this user
-					userStatusManager.MarkUserAsFUD(newMessage.Author.ID, newMessage.Author.UserName, newMessage.TweetID, userInfo.FUDType, userInfo.FUDProbability)
-
-					notificationCh <- alert
-				}
-				continue
-			}
-
-			// Skip if user is already being analyzed
-			if userStatusManager.IsUserBeingAnalyzed(newMessage.Author.ID) {
-				log.Printf("User %s is already being analyzed, skipping", newMessage.Author.UserName)
-				continue
-			}
+			log.Println("Got a new message:", newMessage.Author.UserName, " - ", newMessage.Text, "reply to:", newMessage.ParentTweet.Text)
 
 			// First step analysis for new or clean users
 			messages := ClaudeMessages{}
-			for _, text := range newMessage.TweetsBefore {
-				messages = append(messages, ClaudeMessage{ROLE_USER, text})
-			}
-			messages = append(messages, ClaudeMessage{ROLE_USER, newMessage.Author.UserName + ":" + newMessage.Text})
+			messages = append(messages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+			messages = append(messages, ClaudeMessage{ROLE_USER, "user reply is:  " + newMessage.Author.UserName + ":" + newMessage.Text})
 			messages = append(messages, ClaudeMessage{ROLE_ASSISTANT, "{"})
-			resp, err := claudeApi.SendMessage(messages, string(systemPromptFirstStep))
+			resp, err := claudeApi.SendMessage(messages, fmt.Sprintf("%s\n<instruction>you must analyze %s user messages</instruction>", string(systemPromptFirstStep), newMessage.Author.UserName))
 			if err != nil {
 				log.Printf("error claude: %s", err)
 				continue
@@ -200,25 +145,29 @@ func main() {
 			fmt.Println(resp.Content[0].Text)
 			aiDecision := FirstStepClaudeResponse{}
 			err = json.Unmarshal([]byte("{"+resp.Content[0].Text), &aiDecision)
-			fmt.Println(aiDecision)
-			if aiDecision.IsFlag {
+			fmt.Println("ai decision", aiDecision, resp.Content[0].Text)
+			if aiDecision.IsFud {
 				// Mark user as being analyzed to prevent duplicate analysis
 				userStatusManager.SetUserAnalyzing(newMessage.Author.ID, newMessage.Author.UserName)
-				flagCh <- newMessage
+				fudChannel <- newMessage
 			}
 		}
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for newMessage := range flagCh {
-			lastMessages, err := twitterApi.GetUserLastTweets(twitterapi.UserLastTweetsRequest{UserId: newMessage.Author.ID})
+		for newMessage := range fudChannel {
+			// Get user's ticker mentions using advanced search (max 3 pages)
+			userTickerMentions := getUserTickerMentions(twitterApi, newMessage.Author.UserName, ticker)
 			followers, err := twitterApi.GetUserFollowers(twitterapi.UserFollowersRequest{UserName: newMessage.Author.UserName})
 			followings, err := twitterApi.GetUserFollowings(twitterapi.UserFollowingsRequest{UserName: newMessage.Author.UserName})
-			threadMessages, err := twitterApi.GetTweetReplies(twitterapi.TweetRepliesRequest{TweetID: newMessage.ReplyTweetID})
-			postMessage, err := twitterApi.GetTweetsByIds([]string{newMessage.ReplyTweetID})
 			//prepare claude request
-			claudeMessages := PrepareClaudeSecondStepRequest(lastMessages, followers, followings, threadMessages, postMessage, userStatusManager)
+			claudeMessages := PrepareClaudeSecondStepRequest(userTickerMentions, followers, followings, userStatusManager)
+			claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+			claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "user reply is:  " + newMessage.Author.UserName + ":" + newMessage.Text})
+			claudeMessages = append(claudeMessages, ClaudeMessage{Role: ROLE_ASSISTANT, Content: "{"})
+
+			fmt.Println("send to analyze:", claudeMessages)
 			resp, err := claudeApi.SendMessage(claudeMessages, string(systemPromptSecondStep)+"analyzed user is "+newMessage.Author.UserName)
 			aiDecision2 := SecondStepClaudeResponse{}
 			fmt.Println("claude make a decision for this user:", resp, err)
@@ -267,24 +216,20 @@ func main() {
 	wg.Wait()
 }
 
-func PrepareClaudeSecondStepRequest(lastMessages *twitterapi.UserLastTweetsResponse, followers *twitterapi.UserFollowersResponse, followings *twitterapi.UserFollowingsResponse, threadMessages *twitterapi.TweetRepliesResponse, postMessage *twitterapi.TweetsByIdsResponse, userStatusManager *UserStatusManager) ClaudeMessages {
+func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, followers *twitterapi.UserFollowersResponse, followings *twitterapi.UserFollowingsResponse, userStatusManager *UserStatusManager) ClaudeMessages {
 	claudeMessages := ClaudeMessages{}
 
-	// 1. User's messages from personal page
-	if lastMessages != nil && len(lastMessages.Data.Tweets) > 0 {
-		userMessages := make([]string, 0)
-		for _, tweet := range lastMessages.Data.Tweets {
-			userMessages = append(userMessages, tweet.CreatedAt+" - "+tweet.Text)
-		}
-		userMessagesJSON, _ := json.Marshal(userMessages)
+	// 1. User's ticker mentions with replied messages
+	if userTickerData != nil {
+		userDataJSON, _ := json.Marshal(userTickerData)
 		claudeMessages = append(claudeMessages, ClaudeMessage{
 			Role:    ROLE_USER,
-			Content: fmt.Sprintf("USER'S MESSAGES FROM PERSONAL PAGE:\n%s", string(userMessagesJSON)),
+			Content: fmt.Sprintf("USER'S TICKER MENTIONS AND REPLIES:\n%s", string(userDataJSON)),
 		})
 	} else {
 		claudeMessages = append(claudeMessages, ClaudeMessage{
 			Role:    ROLE_USER,
-			Content: "USER'S MESSAGES FROM PERSONAL PAGE: No messages",
+			Content: "USER'S TICKER MENTIONS AND REPLIES: No ticker mentions found",
 		})
 	}
 
@@ -323,48 +268,13 @@ func PrepareClaudeSecondStepRequest(lastMessages *twitterapi.UserLastTweetsRespo
 		})
 	}
 
-	// 3. All messages in analyzed thread (with authors)
-	if threadMessages != nil && len(threadMessages.Tweets) > 0 {
-		message := []string{}
-		for _, tweet := range threadMessages.Tweets {
-			message = append(message, fmt.Sprintf("@%s: %s (%s)", tweet.Author.UserName, tweet.Text, tweet.CreatedAt))
-		}
-		claudeMessages = append(claudeMessages, ClaudeMessage{
-			Role:    ROLE_USER,
-			Content: fmt.Sprintf("ALL MESSAGES IN ANALYZED THREAD:\n%s", strings.Join(message, "\n")),
-		})
-	} else {
-		claudeMessages = append(claudeMessages, ClaudeMessage{
-			Role:    ROLE_USER,
-			Content: "ALL MESSAGES IN ANALYZED THREAD: No messages in thread",
-		})
-	}
-
-	// 4. Original thread post text with author
-	if postMessage != nil && len(postMessage.Tweets) > 0 {
-		originalTweet := postMessage.Tweets[0]
-		originalPost := fmt.Sprintf("Author: %s\nText: %s", originalTweet.Author.UserName, originalTweet.Text)
-		claudeMessages = append(claudeMessages, ClaudeMessage{
-			Role:    ROLE_USER,
-			Content: fmt.Sprintf("ORIGINAL THREAD POST:\n%s", originalPost),
-		})
-	} else {
-		claudeMessages = append(claudeMessages, ClaudeMessage{
-			Role:    ROLE_USER,
-			Content: "ORIGINAL THREAD POST: Not found",
-		})
-	}
-	claudeMessages = append(claudeMessages, ClaudeMessage{
-		Role:    ROLE_ASSISTANT,
-		Content: "{",
-	})
 	return claudeMessages
 }
 
 type FirstStepClaudeResponse struct {
-	IsFlag          bool   `json:"is_flag"`
-	FlagProbability int    `json:"flag_probability"`
-	Reason          string `json:"reason"`
+	IsFud          bool   `json:"is_fud"`
+	FudProbability int    `json:"fud_probability"`
+	Reason         string `json:"reason"`
 }
 type SecondStepClaudeResponse struct {
 	IsFUDMessage   bool     `json:"is_fud_message"`
@@ -376,7 +286,127 @@ type SecondStepClaudeResponse struct {
 	DecisionReason string   `json:"decision_reason"` // 1-2 sentence summary of why this decision was made
 }
 
-func SendNewTweetToChannel(tweet twitterapi.Tweet, tweetsBefore []string, newMessageCh chan twitterapi.NewMessage, tweetsExistsStorage map[string]int) {
+type UserTickerMentionsData struct {
+	UserMessages    []UserMessageWithReplies `json:"user_messages"`
+	TotalMessages   int                      `json:"total_messages"`
+	RepliedMessages int                      `json:"replied_messages"`
+	TokenCount      int                      `json:"token_count"`
+}
+
+type UserMessageWithReplies struct {
+	TweetID     string      `json:"tweet_id"`
+	CreatedAt   string      `json:"created_at"`
+	Text        string      `json:"text"`
+	InReplyToID string      `json:"in_reply_to_id,omitempty"`
+	RepliedTo   *ReplyTweet `json:"replied_to,omitempty"`
+}
+
+type ReplyTweet struct {
+	TweetID   string `json:"tweet_id"`
+	CreatedAt string `json:"created_at"`
+	Text      string `json:"text"`
+	Author    string `json:"author"`
+}
+
+func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username string, ticker string) *UserTickerMentionsData {
+	const MAX_PAGES = 3
+	const TOKEN_LIMIT = 50000 // Half of typical Claude token limit
+
+	userMessages := []UserMessageWithReplies{}
+	cursor := ""
+	totalPages := 0
+	replyTweetIDs := []string{}
+
+	// Collect user messages with ticker mentions (max 3 pages)
+	for totalPages < MAX_PAGES {
+		searchResponse, err := twitterApi.AdvancedSearch(twitterapi.AdvancedSearchRequest{
+			Query:     fmt.Sprintf("%s from:%s", ticker, username),
+			QueryType: twitterapi.LATEST,
+			Cursor:    cursor,
+		})
+
+		if err != nil {
+			log.Printf("Error fetching user ticker mentions: %v", err)
+			break
+		}
+
+		// Process messages and collect reply IDs
+		for _, tweet := range searchResponse.Tweets {
+			userMessage := UserMessageWithReplies{
+				TweetID:     tweet.Id,
+				CreatedAt:   tweet.CreatedAt,
+				Text:        tweet.Text,
+				InReplyToID: tweet.InReplyToId,
+			}
+
+			if tweet.InReplyToId != "" {
+				replyTweetIDs = append(replyTweetIDs, tweet.InReplyToId)
+			}
+
+			userMessages = append(userMessages, userMessage)
+		}
+
+		totalPages++
+
+		if !searchResponse.HasNextPage || searchResponse.NextCursor == "" {
+			break
+		}
+		cursor = searchResponse.NextCursor
+	}
+
+	// Get all replied-to messages in one batch request
+	if len(replyTweetIDs) > 0 {
+		repliedTweets, err := twitterApi.GetTweetsByIds(replyTweetIDs)
+		if err == nil {
+			// Create a map for quick lookup
+			replyMap := make(map[string]ReplyTweet)
+			for _, tweet := range repliedTweets.Tweets {
+				replyMap[tweet.Id] = ReplyTweet{
+					TweetID:   tweet.Id,
+					CreatedAt: tweet.CreatedAt,
+					Text:      tweet.Text,
+					Author:    tweet.Author.UserName,
+				}
+			}
+
+			// Associate replies with user messages
+			for i := range userMessages {
+				if userMessages[i].InReplyToID != "" {
+					if reply, exists := replyMap[userMessages[i].InReplyToID]; exists {
+						userMessages[i].RepliedTo = &reply
+					}
+				}
+			}
+		}
+	}
+
+	// Create result data
+	result := &UserTickerMentionsData{
+		UserMessages:    userMessages,
+		TotalMessages:   len(userMessages),
+		RepliedMessages: len(replyTweetIDs),
+	}
+
+	// Calculate token count and truncate if necessary
+	jsonData, _ := json.Marshal(result)
+	tokenCount := len(string(jsonData)) / 4 // Rough token estimation
+	result.TokenCount = tokenCount
+
+	// If exceeds token limit, cut data in half
+	if tokenCount > TOKEN_LIMIT {
+		halfLength := len(userMessages) / 2
+		result.UserMessages = userMessages[:halfLength]
+		result.TotalMessages = halfLength
+
+		// Recalculate token count
+		jsonData, _ = json.Marshal(result)
+		result.TokenCount = len(string(jsonData)) / 4
+	}
+
+	return result
+}
+
+func SendIfNotExistsTweetToChannel(tweet twitterapi.Tweet, tweetsBefore []string, newMessageCh chan twitterapi.NewMessage, tweetsExistsStorage map[string]int, parentTweet twitterapi.Tweet) {
 	if _, ok := tweetsExistsStorage[tweet.Id]; !ok {
 		newMessageCh <- twitterapi.NewMessage{
 			TweetID:      tweet.Id,
@@ -386,6 +416,11 @@ func SendNewTweetToChannel(tweet twitterapi.Tweet, tweetsBefore []string, newMes
 				Name     string
 				ID       string
 			}{tweet.Author.UserName, tweet.Author.Name, tweet.Author.Id},
+			ParentTweet: struct {
+				ID     string
+				Author string
+				Text   string
+			}{ID: parentTweet.Id, Author: parentTweet.Author.UserName, Text: parentTweet.Text},
 			Text:         tweet.Text,
 			CreatedAt:    tweet.CreatedAt,
 			ReplyCount:   tweet.ReplyCount,

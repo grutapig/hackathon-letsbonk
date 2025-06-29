@@ -6,3 +6,6 @@ community_tweets.csv
 last_tweets.csv
 C*.md
 friends_data.csv
+*.json
+advanced_search_results.csv
+prompt_simple.txt

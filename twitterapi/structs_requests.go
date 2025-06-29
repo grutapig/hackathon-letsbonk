@@ -70,6 +70,9 @@ type TweetsByIdsResponse struct {
 	Message string  `json:"message"`
 }
 
+const LATEST = "Latest"
+const TOP = "Top"
+
 type AdvancedSearchRequest struct {
 	Query     string `json:"query"`
 	QueryType string `json:"query_type,omitempty"` // "Latest" or "Top", default: Latest
