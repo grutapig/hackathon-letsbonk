@@ -69,3 +69,9 @@ type TweetsByIdsResponse struct {
 	Status  string  `json:"status"`
 	Message string  `json:"message"`
 }
+
+type AdvancedSearchRequest struct {
+	Query     string `json:"query"`
+	QueryType string `json:"query_type,omitempty"` // "Latest" or "Top", default: Latest
+	Cursor    string `json:"cursor,omitempty"`     // For pagination, first page = ""
+}

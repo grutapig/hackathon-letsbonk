@@ -276,3 +276,12 @@ type UserFollowingsResponse struct {
 	Msg         string `json:"msg"`
 	Code        int    `json:"code"`
 }
+
+type AdvancedSearchResponse struct {
+	Tweets      []Tweet `json:"tweets"`
+	HasNextPage bool    `json:"has_next_page"`
+	NextCursor  string  `json:"next_cursor"`
+	Status      string  `json:"status"`
+	Msg         string  `json:"msg"`
+	Code        int     `json:"code"`
+}
