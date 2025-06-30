@@ -141,7 +141,7 @@ func (usm *UserStatusManager) UpdateUserAfterAnalysis(userID, username string, a
 	user.LastMessageID = messageID
 	user.AnalysisCount++
 
-	if aiDecision.IsFUDUser || aiDecision.IsFUDMessage {
+	if aiDecision.IsFUDUser || aiDecision.IsFUDAttack {
 		user.Status = STATUS_FUD_CONFIRMED
 		user.FUDType = aiDecision.FUDType
 		user.FUDProbability = aiDecision.FUDProbability

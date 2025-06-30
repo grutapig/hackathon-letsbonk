@@ -11,18 +11,7 @@ import (
 func MonitoringHandler(twitterApi *twitterapi.TwitterAPIService, newMessageCh chan twitterapi.NewMessage, dbService *DatabaseService) {
 	defer close(newMessageCh)
 
-	monitoringMethod := os.Getenv(ENV_MONITORING_METHOD)
-	if monitoringMethod == "" {
-		monitoringMethod = "incremental" // default
-	}
-
-	log.Printf("Starting monitoring with method: %s", monitoringMethod)
-
-	if monitoringMethod == "full_scan" {
-		MonitoringFullScan(twitterApi, newMessageCh, dbService)
-	} else {
-		MonitoringIncremental(twitterApi, newMessageCh, dbService)
-	}
+	MonitoringIncremental(twitterApi, newMessageCh, dbService)
 }
 
 func MonitoringIncremental(twitterApi *twitterapi.TwitterAPIService, newMessageCh chan twitterapi.NewMessage, dbService *DatabaseService) {
@@ -39,24 +28,29 @@ func MonitoringIncremental(twitterApi *twitterapi.TwitterAPIService, newMessageC
 			continue
 		}
 
-		// Fill exists storage; first time we just fill storage
+		// First time initialization
 		if len(tweetsExistsStorage) == 0 {
-			for _, tweet := range tweetsResponse.Tweets {
-				tweetsExistsStorage[tweet.Id] = tweet.ReplyCount
-				// Last page is enough for monitoring
-				tweetRepliesResponse, err := twitterApi.GetTweetReplies(twitterapi.TweetRepliesRequest{
-					TweetID: tweet.Id,
-				})
-				if err != nil {
-					// First step we don't handle any errors, debug is enough
-					log.Printf("error on gettings replies for tweet, ERR: %s, TWEET ID: %s, TEXT: %s, AUTHOR: %s", err, tweet.Id, tweet.Text, tweet.Author.Name)
-					continue
-				}
-				for _, tweetReply := range tweetRepliesResponse.Tweets {
-					tweetsExistsStorage[tweetReply.Id] = tweetReply.ReplyCount
-				}
+			log.Println("First time initialization...")
+
+			// Check if we need full database initialization
+			tweetCount, err := dbService.GetTweetCount()
+			if err != nil {
+				log.Printf("Error getting tweet count: %v", err)
+				tweetCount = 0
 			}
-			log.Println("filled storage", len(tweetsExistsStorage))
+
+			if tweetCount < 1100 {
+				log.Printf("Tweet count (%d) is less than 110, performing full community load...", tweetCount)
+				FullCommunityLoad(twitterApi, dbService)
+			} else {
+				log.Printf("Tweet count (%d) is >= 110, skipping full database initialization", tweetCount)
+			}
+
+			// Always initialize mapping from 3 pages for monitoring
+			log.Println("Initializing monitoring mapping from 3 pages...")
+			InitializeMonitoringMapping(twitterApi, tweetsExistsStorage)
+
+			log.Printf("Monitoring initialization completed with %d tweets in storage", len(tweetsExistsStorage))
 			continue
 		}
 
@@ -65,7 +59,7 @@ func MonitoringIncremental(twitterApi *twitterapi.TwitterAPIService, newMessageC
 			// Store tweet and user data
 			storeTweetAndUser(dbService, tweet)
 
-			SendIfNotExistsTweetToChannel(tweet, []string{}, newMessageCh, tweetsExistsStorage, twitterapi.Tweet{}, twitterapi.Tweet{})
+			SendIfNotExistsTweetToChannel(tweet, newMessageCh, tweetsExistsStorage, twitterapi.Tweet{}, twitterapi.Tweet{})
 			if tweet.ReplyCount > tweetsExistsStorage[tweet.Id] {
 				tweetsExistsStorage[tweet.Id] = tweet.ReplyCount
 				// Last page is enough for monitoring
@@ -77,172 +71,50 @@ func MonitoringIncremental(twitterApi *twitterapi.TwitterAPIService, newMessageC
 					log.Printf("error on gettings replies for tweet, ERR: %s, TWEET ID: %s, TEXT: %s, AUTHOR: %s", err, tweet.Id, tweet.Text, tweet.Author.Name)
 					continue
 				}
-				tweets := []string{}
-				for _, tweet := range tweetRepliesResponse.Tweets {
-					tweets = append(tweets, tweet.Author.UserName+":"+tweet.Text)
-				}
-				for i, tweetReply := range tweetRepliesResponse.Tweets {
+
+				for _, tweetReply := range tweetRepliesResponse.Tweets {
 					// Store reply tweet and user data
 					storeTweetAndUser(dbService, tweetReply)
 
-					SendIfNotExistsTweetToChannel(tweetReply, tweets[i:], newMessageCh, tweetsExistsStorage, tweet, twitterapi.Tweet{})
+					// Check if this reply is responding to another reply (not the main post)
+					var parentTweet, grandParentTweet twitterapi.Tweet
+					if tweetReply.InReplyToId != tweet.Id {
+						// This is a reply to another reply, not to the main post
+						log.Printf("Reply %s is responding to another reply %s, not main post %s", tweetReply.Id, tweetReply.InReplyToId, tweet.Id)
+
+						// Try to find the immediate parent in database
+						if dbTweet, err := dbService.GetTweet(tweetReply.InReplyToId); err == nil {
+							if dbUser, err := dbService.GetUser(dbTweet.UserID); err == nil {
+								parentTweet = twitterapi.Tweet{
+									Id:   dbTweet.ID,
+									Text: dbTweet.Text,
+									Author: twitterapi.Author{
+										Id:       dbUser.ID,
+										UserName: dbUser.Username,
+										Name:     dbUser.Name,
+									},
+								}
+								log.Printf("'%s', Found parent reply in database: %s by %s", tweetReply.Text, parentTweet.Text, parentTweet.Author.UserName)
+
+								// Set the main post as grandparent
+								grandParentTweet = tweet
+							}
+						} else {
+							log.Printf("Parent reply %s not found in database", tweetReply.InReplyToId)
+							// Fallback: use main post as parent
+							parentTweet = tweet
+						}
+					} else {
+						log.Printf("Reply %s is responding to main post %s", tweetReply.Id, tweet.Id)
+						// This is a direct reply to the main post
+						parentTweet = tweet
+					}
+
+					SendIfNotExistsTweetToChannel(tweetReply, newMessageCh, tweetsExistsStorage, parentTweet, grandParentTweet)
 					tweetsExistsStorage[tweetReply.Id] = tweetReply.ReplyCount
 				}
 			}
 			tweetsExistsStorage[tweet.Id] = tweet.ReplyCount
-		}
-	}
-}
-
-func MonitoringFullScan(twitterApi *twitterapi.TwitterAPIService, newMessageCh chan twitterapi.NewMessage, dbService *DatabaseService) {
-	processedReplies := map[string]bool{}
-	replyCountStorage := map[string]int{} // Track reply counts like in incremental
-
-	// Initial population - mark all existing messages as processed and save reply counts
-	log.Println("Full scan: Initial population of existing messages...")
-	InitialPopulationFullScan(twitterApi, processedReplies, replyCountStorage)
-	log.Printf("Full scan: Initial population completed, marked %d messages as processed", len(processedReplies))
-
-	for {
-		time.Sleep(5 * time.Second) // Longer interval for full scan
-
-		// Get all community posts
-		tweetsResponse, err := twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
-			CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
-		})
-		if err != nil {
-			log.Printf("Error getting community tweets: %v", err)
-			continue
-		}
-
-		log.Printf("Full scan: found %d posts", len(tweetsResponse.Tweets))
-
-		// Create mapping of all posts
-		postsMapping := make(map[string]twitterapi.Tweet)
-		for _, tweet := range tweetsResponse.Tweets {
-			postsMapping[tweet.Id] = tweet
-		}
-
-		// For each post, get replies
-		for _, mainTweet := range tweetsResponse.Tweets {
-			tweetRepliesResponse, err := twitterApi.GetTweetReplies(twitterapi.TweetRepliesRequest{
-				TweetID: mainTweet.Id,
-			})
-			if err != nil {
-				log.Printf("Error getting replies for tweet %s: %v", mainTweet.Id, err)
-				continue
-			}
-
-			// Process each reply
-			for _, reply := range tweetRepliesResponse.Tweets {
-				// Store reply tweet and user data
-				storeTweetAndUser(dbService, reply)
-
-				// Check if this is a new reply
-				if !processedReplies[reply.Id] {
-					// Mark as processed
-					processedReplies[reply.Id] = true
-
-					// Send new reply to channel
-					newMessageCh <- twitterapi.NewMessage{
-						TweetID:      reply.Id,
-						ReplyTweetID: reply.InReplyToId,
-						Author: struct {
-							UserName string
-							Name     string
-							ID       string
-						}{reply.Author.UserName, reply.Author.Name, reply.Author.Id},
-						ParentTweet: struct {
-							ID     string
-							Author string
-							Text   string
-						}{ID: mainTweet.Id, Author: mainTweet.Author.UserName, Text: mainTweet.Text},
-						GrandParentTweet: struct {
-							ID     string
-							Author string
-							Text   string
-						}{}, // Empty for direct replies to main posts
-						Text:         reply.Text,
-						CreatedAt:    reply.CreatedAt,
-						ReplyCount:   reply.ReplyCount,
-						LikeCount:    reply.LikeCount,
-						RetweetCount: reply.RetweetCount,
-						TweetsBefore: []string{},
-					}
-
-					log.Printf("Full scan: found new reply from %s to post %s", reply.Author.UserName, mainTweet.Id)
-				}
-			}
-		}
-
-		// Cleanup old processed replies to prevent memory growth
-		if len(processedReplies) > 1000000 {
-			log.Println("Cleaning up processed replies cache")
-			newProcessedReplies := make(map[string]bool)
-			// Keep only last 5000 entries (rough cleanup)
-			count := 0
-			for id, val := range processedReplies {
-				if count >= 5000 {
-					break
-				}
-				newProcessedReplies[id] = val
-				count++
-			}
-			processedReplies = newProcessedReplies
-		}
-	}
-}
-
-// InitialPopulationFullScan marks all existing messages as processed during startup
-func InitialPopulationFullScan(twitterApi *twitterapi.TwitterAPIService, processedReplies map[string]bool, replyCountStorage map[string]int) {
-	// Get all community posts
-	tweetsResponse, err := twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
-		CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
-	})
-	if err != nil {
-		log.Printf("Error getting community tweets for initial population: %v", err)
-		return
-	}
-
-	log.Printf("Full scan: Initial population found %d main posts", len(tweetsResponse.Tweets))
-
-	// For each main post, recursively mark all replies as processed
-	for _, mainTweet := range tweetsResponse.Tweets {
-		// Mark main tweet as processed and save reply count
-		processedReplies[mainTweet.Id] = true
-		replyCountStorage[mainTweet.Id] = mainTweet.ReplyCount
-
-		// Recursively mark all replies as processed
-		MarkRepliesAsProcessedRecursive(twitterApi, mainTweet.Id, processedReplies, replyCountStorage, 0)
-	}
-}
-
-// MarkRepliesAsProcessedRecursive recursively marks all replies as processed
-func MarkRepliesAsProcessedRecursive(twitterApi *twitterapi.TwitterAPIService, tweetId string, processedReplies map[string]bool, replyCountStorage map[string]int, depth int) {
-	if depth > 10 { // Prevent infinite recursion
-		log.Printf("Max depth reached for tweet %s", tweetId)
-		return
-	}
-
-	// Get replies to this tweet
-	tweetRepliesResponse, err := twitterApi.GetTweetReplies(twitterapi.TweetRepliesRequest{
-		TweetID: tweetId,
-	})
-	if err != nil {
-		log.Printf("Error getting replies for tweet %s during initial population: %v", tweetId, err)
-		return
-	}
-
-	log.Printf("Full scan: Initial population depth %d - found %d replies for tweet %s", depth, len(tweetRepliesResponse.Tweets), tweetId)
-
-	// Mark each reply as processed and save reply count, then recurse deeper
-	for _, reply := range tweetRepliesResponse.Tweets {
-		processedReplies[reply.Id] = true
-		replyCountStorage[reply.Id] = reply.ReplyCount
-
-		// Recurse deeper if this reply has replies
-		if reply.ReplyCount > 0 {
-			MarkRepliesAsProcessedRecursive(twitterApi, reply.Id, processedReplies, replyCountStorage, depth+1)
 		}
 	}
 }
@@ -274,18 +146,278 @@ func storeTweetAndUser(dbService *DatabaseService, tweet twitterapi.Tweet) {
 		}
 	}
 
-	// Store tweet
+	// Store tweet with default community source
 	tweetModel := TweetModel{
-		ID:          tweet.Id,
-		Text:        tweet.Text,
-		CreatedAt:   createdAt,
-		ReplyCount:  tweet.ReplyCount,
-		UserID:      tweet.Author.Id,
-		InReplyToID: tweet.InReplyToId,
+		ID:            tweet.Id,
+		Text:          tweet.Text,
+		CreatedAt:     createdAt,
+		ReplyCount:    tweet.ReplyCount,
+		UserID:        tweet.Author.Id,
+		InReplyToID:   tweet.InReplyToId,
+		SourceType:    TWEET_SOURCE_COMMUNITY,
+		TickerMention: "",
+		SearchQuery:   "",
 	}
 
 	err = dbService.SaveTweet(tweetModel)
 	if err != nil {
 		log.Printf("Failed to save tweet %s: %v", tweet.Id, err)
 	}
+}
+
+func storeTweetAndUserWithSource(dbService *DatabaseService, tweet twitterapi.Tweet, sourceType, tickerMention, searchQuery string) {
+	// Parse created_at time
+	createdAt, err := time.Parse(time.RFC1123, tweet.CreatedAt)
+	if err != nil {
+		// Try alternative time format if RFC1123 fails
+		createdAt, err = time.Parse("Mon Jan 02 15:04:05 -0700 2006", tweet.CreatedAt)
+		if err != nil {
+			log.Printf("Failed to parse tweet created_at: %v", err)
+			createdAt = time.Now() // Fallback to current time
+		}
+	}
+
+	// Store user
+	user := UserModel{
+		ID:       tweet.Author.Id,
+		Username: tweet.Author.UserName,
+		Name:     tweet.Author.Name,
+	}
+
+	// Only store if user doesn't exist (to avoid overwriting existing data)
+	if !dbService.UserExists(tweet.Author.Id) {
+		err = dbService.SaveUser(user)
+		if err != nil {
+			log.Printf("Failed to save user %s: %v", tweet.Author.UserName, err)
+		}
+	}
+
+	// Store tweet with source information
+	tweetModel := TweetModel{
+		ID:            tweet.Id,
+		Text:          tweet.Text,
+		CreatedAt:     createdAt,
+		ReplyCount:    tweet.ReplyCount,
+		UserID:        tweet.Author.Id,
+		InReplyToID:   tweet.InReplyToId,
+		SourceType:    sourceType,
+		TickerMention: tickerMention,
+		SearchQuery:   searchQuery,
+	}
+
+	err = dbService.SaveTweet(tweetModel)
+	if err != nil {
+		log.Printf("Failed to save tweet %s: %v", tweet.Id, err)
+	}
+}
+
+func InitialCommunityLoad(twitterApi *twitterapi.TwitterAPIService, dbService *DatabaseService) {
+	const MAX_PAGES = 3
+	cursor := ""
+	totalPosts := 0
+	totalReplies := 0
+
+	log.Printf("Starting initial community load - fetching %d pages...", MAX_PAGES)
+
+	for page := 0; page < MAX_PAGES; page++ {
+		var tweetsResponse *twitterapi.CommunityTweetsResponse
+		var err error
+
+		if cursor == "" {
+			tweetsResponse, err = twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
+				CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
+			})
+		} else {
+			tweetsResponse, err = twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
+				CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
+				Cursor:      cursor,
+			})
+		}
+
+		if err != nil {
+			log.Printf("Error fetching community tweets page %d: %v", page+1, err)
+			break
+		}
+
+		if len(tweetsResponse.Tweets) == 0 {
+			log.Printf("No more tweets found on page %d", page+1)
+			break
+		}
+
+		log.Printf("Processing page %d with %d posts...", page+1, len(tweetsResponse.Tweets))
+
+		// Process each main post
+		for _, mainTweet := range tweetsResponse.Tweets {
+			// Save main post
+			storeTweetAndUserWithSource(dbService, mainTweet, TWEET_SOURCE_COMMUNITY, "", "")
+			totalPosts++
+
+			// Get all replies for this post recursively
+			repliesCount := LoadAllRepliesRecursive(twitterApi, dbService, mainTweet.Id, 0)
+			totalReplies += repliesCount
+
+			log.Printf("Loaded post %s with %d replies", mainTweet.Id, repliesCount)
+		}
+
+		// Check for next page
+		if tweetsResponse.NextCursor == "" {
+			log.Printf("No more pages available after page %d", page+1)
+			break
+		}
+		cursor = tweetsResponse.NextCursor
+	}
+
+	log.Printf("Initial community load completed: %d posts, %d replies loaded", totalPosts, totalReplies)
+}
+
+func LoadAllRepliesRecursive(twitterApi *twitterapi.TwitterAPIService, dbService *DatabaseService, tweetID string, depth int) int {
+	if depth > 10 { // Prevent infinite recursion
+		log.Printf("Max depth reached for tweet %s", tweetID)
+		return 0
+	}
+
+	repliesResponse, err := twitterApi.GetTweetReplies(twitterapi.TweetRepliesRequest{
+		TweetID: tweetID,
+	})
+	if err != nil {
+		log.Printf("Error getting replies for tweet %s: %v", tweetID, err)
+		return 0
+	}
+
+	totalReplies := len(repliesResponse.Tweets)
+
+	for _, reply := range repliesResponse.Tweets {
+		// Save reply
+		storeTweetAndUserWithSource(dbService, reply, TWEET_SOURCE_COMMUNITY, "", "")
+
+		// Recursively load replies to this reply
+		nestedReplies := LoadAllRepliesRecursive(twitterApi, dbService, reply.Id, depth+1)
+		totalReplies += nestedReplies
+	}
+
+	return totalReplies
+}
+
+// FullCommunityLoad loads ALL community posts with all nested replies to database (complete project dump)
+func FullCommunityLoad(twitterApi *twitterapi.TwitterAPIService, dbService *DatabaseService) {
+	cursor := ""
+	totalPosts := 0
+	totalReplies := 0
+	pageCount := 0
+
+	log.Printf("Starting FULL community load - fetching ALL pages...")
+
+	for {
+		pageCount++
+		var tweetsResponse *twitterapi.CommunityTweetsResponse
+		var err error
+
+		if cursor == "" {
+			tweetsResponse, err = twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
+				CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
+			})
+		} else {
+			tweetsResponse, err = twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
+				CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
+				Cursor:      cursor,
+			})
+		}
+
+		if err != nil {
+			log.Printf("Error fetching community tweets page %d: %v", pageCount, err)
+			break
+		}
+
+		if len(tweetsResponse.Tweets) == 0 {
+			log.Printf("No more tweets found on page %d", pageCount)
+			break
+		}
+
+		log.Printf("Processing FULL load page %d with %d posts...", pageCount, len(tweetsResponse.Tweets))
+
+		// Process each main post
+		for _, mainTweet := range tweetsResponse.Tweets {
+			// Save main post
+			storeTweetAndUserWithSource(dbService, mainTweet, TWEET_SOURCE_COMMUNITY, "", "")
+			totalPosts++
+
+			// Get all replies for this post recursively
+			repliesCount := LoadAllRepliesRecursive(twitterApi, dbService, mainTweet.Id, 0)
+			totalReplies += repliesCount
+
+			log.Printf("FULL load: saved post %s with %d replies", mainTweet.Id, repliesCount)
+		}
+
+		// Check for next page
+		if tweetsResponse.NextCursor == "" {
+			log.Printf("Reached end of community pages after page %d", pageCount)
+			break
+		}
+		cursor = tweetsResponse.NextCursor
+	}
+
+	log.Printf("FULL community load completed: %d posts, %d replies loaded across %d pages", totalPosts, totalReplies, pageCount)
+}
+
+// InitializeMonitoringMapping initializes the monitoring storage with tweets from 3 pages (for tracking new messages)
+func InitializeMonitoringMapping(twitterApi *twitterapi.TwitterAPIService, tweetsExistsStorage map[string]int) {
+	cursor := ""
+	pageCount := 0
+	maxPages := 3
+
+	for pageCount < maxPages {
+		var tweetsResponse *twitterapi.CommunityTweetsResponse
+		var err error
+
+		if cursor == "" {
+			tweetsResponse, err = twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
+				CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
+			})
+		} else {
+			tweetsResponse, err = twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
+				CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
+				Cursor:      cursor,
+			})
+		}
+
+		if err != nil {
+			log.Printf("Error fetching monitoring mapping page %d: %v", pageCount+1, err)
+			break
+		}
+
+		if len(tweetsResponse.Tweets) == 0 {
+			log.Printf("No tweets found on monitoring mapping page %d", pageCount+1)
+			break
+		}
+
+		log.Printf("Processing monitoring mapping page %d with %d posts...", pageCount+1, len(tweetsResponse.Tweets))
+
+		for _, tweet := range tweetsResponse.Tweets {
+			tweetsExistsStorage[tweet.Id] = tweet.ReplyCount
+
+			// Get replies for monitoring mapping
+			tweetRepliesResponse, err := twitterApi.GetTweetReplies(twitterapi.TweetRepliesRequest{
+				TweetID: tweet.Id,
+			})
+			if err != nil {
+				log.Printf("Error getting replies for monitoring mapping, tweet %s: %v", tweet.Id, err)
+				continue
+			}
+
+			for _, tweetReply := range tweetRepliesResponse.Tweets {
+				tweetsExistsStorage[tweetReply.Id] = tweetReply.ReplyCount
+			}
+		}
+
+		pageCount++
+
+		// Check for next page
+		if tweetsResponse.NextCursor == "" {
+			log.Printf("No more pages available for monitoring mapping after page %d", pageCount)
+			break
+		}
+		cursor = tweetsResponse.NextCursor
+	}
+
+	log.Printf("Monitoring mapping initialized with %d tweets from %d pages", len(tweetsExistsStorage), pageCount)
 }

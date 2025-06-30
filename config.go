@@ -13,3 +13,22 @@ const ENV_MONITORING_METHOD = "monitoring_method" // "incremental" or "full_scan
 const ENV_CLAUDE_API_KEY = "claude_api_key"
 const ENV_TELEGRAM_API_KEY = "telegram_api_key"
 const ENV_TELEGRAM_ADMIN_CHAT_ID = "tg_admin_chat_id"
+const ENV_TARGET_USERS = "target_users" // Comma-separated list of usernames to import tweets from
+
+// Monitoring method constants
+const MONITORING_METHOD_INCREMENTAL = "incremental"
+const MONITORING_METHOD_FULL_SCAN = "full_scan"
+
+// Message processing constants
+const PROCESSING_TYPE_DETAILED = "detailed" // Detailed user analysis (current second step)
+const PROCESSING_TYPE_FAST = "fast"         // Fast notification without detailed analysis
+
+// Tweet source type constants
+const TWEET_SOURCE_COMMUNITY = "community"         // Tweet from community monitoring
+const TWEET_SOURCE_TICKER_SEARCH = "ticker_search" // Tweet from ticker mention search
+const TWEET_SOURCE_CONTEXT = "context"             // Tweet loaded for context (replies)
+const TWEET_SOURCE_MONITORING = "monitoring"       // Tweet from general monitoring
+
+// User relation type constants
+const RELATION_TYPE_FOLLOWER = "follower"   // User is a follower of another user
+const RELATION_TYPE_FOLLOWING = "following" // User is following another user

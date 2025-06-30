@@ -21,6 +21,10 @@ type FUDAlertNotification struct {
 	RecommendedAction string   `json:"recommended_action"`
 	KeyEvidence       []string `json:"key_evidence"`
 	DecisionReason    string   `json:"decision_reason"`
+	// Thread context fields
+	OriginalPostText   string `json:"original_post_text"`
+	OriginalPostAuthor string `json:"original_post_author"`
+	HasThreadContext   bool   `json:"has_thread_context"`
 }
 
 func NewNotificationFormatter() *NotificationFormatter {
@@ -31,6 +35,17 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 	severityEmoji := nf.getSeverityEmoji(alert.AlertSeverity)
 	typeEmoji := nf.getFUDTypeEmoji(alert.FUDType)
 
+	// Build context section if available
+	contextSection := ""
+	if alert.HasThreadContext && alert.OriginalPostText != "" {
+		contextSection = fmt.Sprintf(`
+
+📄 <b>Original Post Context:</b>
+<i>%s</i> - @%s`,
+			nf.truncateText(alert.OriginalPostText, 100),
+			alert.OriginalPostAuthor)
+	}
+
 	message := fmt.Sprintf(`%s <b>FUD ALERT - %s SEVERITY</b>
 
 %s <b>Attack Type:</b> %s
@@ -38,8 +53,8 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 📊 <b>Confidence:</b> %.0f%%
 ⚡ <b>Action:</b> %s
 
-💬 <b>Message Preview:</b>
-<i>%s</i>
+💬 <b>FUD Message:</b>
+<i>%s</i>%s
 
 🔗 <b>Links:</b>
 • <a href="https://twitter.com/%s/status/%s">FUD Message</a>
@@ -52,7 +67,8 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 		alert.FUDUsername,
 		alert.FUDProbability*100,
 		alert.RecommendedAction,
-		nf.truncateText(alert.MessagePreview, 150),
+		nf.truncateText(alert.MessagePreview, 120),
+		contextSection,
 		alert.FUDUsername, alert.FUDMessageID,
 		alert.ThreadID,
 		nf.formatTime(alert.DetectedAt),
@@ -109,6 +125,18 @@ func (nf *NotificationFormatter) FormatDetailedView(alert FUDAlertNotification) 
 		evidenceList = "  No specific evidence provided\n"
 	}
 
+	// Build thread context section for detailed view
+	threadContextSection := ""
+	if alert.HasThreadContext && alert.OriginalPostText != "" {
+		threadContextSection = fmt.Sprintf(`
+
+📄 <b>ORIGINAL POST (FULL TEXT)</b>
+👤 Author: @%s
+📝 Content: <i>%s</i>`,
+			alert.OriginalPostAuthor,
+			alert.OriginalPostText)
+	}
+
 	message := fmt.Sprintf(`%s <b>DETAILED FUD ANALYSIS</b>
 
 🏷️ <b>CLASSIFICATION</b>
@@ -118,8 +146,8 @@ func (nf *NotificationFormatter) FormatDetailedView(alert FUDAlertNotification) 
 🚨 Risk Level: %s
 ⚡ Recommended Action: %s
 
-📝 <b>FULL MESSAGE TEXT</b>
-<i>%s</i>
+💬 <b>FUD MESSAGE (FULL TEXT)</b>
+<i>%s</i>%s
 
 🔍 <b>KEY EVIDENCE</b>
 %s
@@ -144,6 +172,7 @@ User ID: %s`,
 		strings.ToUpper(alert.AlertSeverity),
 		alert.RecommendedAction,
 		alert.MessagePreview,
+		threadContextSection,
 		evidenceList,
 		alert.DecisionReason,
 		alert.FUDUsername, alert.FUDMessageID,

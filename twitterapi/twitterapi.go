@@ -50,8 +50,8 @@ func NewTwitterAPIService(apiKey string, baseUrl string, proxyDSN string) *Twitt
 	}
 }
 
-func (s *TwitterAPIService) makeRequest(url string, params map[string]string) (*APIResponse, error) {
-	req, err := http.NewRequest("GET", url, nil)
+func (s *TwitterAPIService) makeRequest(uri string, params map[string]string) (*APIResponse, error) {
+	req, err := http.NewRequest("GET", uri, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error create request: %w", err)
 	}
@@ -61,12 +61,15 @@ func (s *TwitterAPIService) makeRequest(url string, params map[string]string) (*
 
 	q := req.URL.Query()
 	for key, value := range params {
-		if value != "" {
+		if value != "" && key == "cursor" {
+			unescape, _ := url.QueryUnescape(value)
+			q.Add(key, unescape)
+		} else if value != "" {
 			q.Add(key, value)
 		}
 	}
-	req.URL.RawQuery = q.Encode()
 
+	req.URL.RawQuery = q.Encode()
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error send request: %w", err)

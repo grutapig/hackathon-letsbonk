@@ -179,7 +179,6 @@ type Tweet struct {
 }
 type CommunityTweetsResponse struct {
 	Tweets     []Tweet `json:"tweets"`
-	HasNext    bool    `json:"has_next"`
 	NextCursor string  `json:"next_cursor"`
 	Status     string  `json:"status"`
 	Msg        string  `json:"msg"`

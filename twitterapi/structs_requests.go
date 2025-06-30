@@ -54,7 +54,6 @@ type NewMessage struct {
 	ReplyCount   int
 	LikeCount    int
 	RetweetCount int
-	TweetsBefore []string
 }
 
 const (

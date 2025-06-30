@@ -8,99 +8,178 @@ import (
 	"time"
 )
 
-// SecondStepHandler handles flagged messages second step analysis
-func SecondStepHandler(fudChannel chan twitterapi.NewMessage, notificationCh chan FUDAlertNotification, twitterApi *twitterapi.TwitterAPIService, claudeApi *ClaudeApi, systemPromptSecondStep []byte, userStatusManager *UserStatusManager, ticker string, dbService *DatabaseService) {
-	defer close(notificationCh)
+func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUDAlertNotification, twitterApi *twitterapi.TwitterAPIService, claudeApi *ClaudeApi, systemPromptSecondStep []byte, userStatusManager *UserStatusManager, ticker string, dbService *DatabaseService) {
+	// Get user's ticker mentions using advanced search (max 3 pages)
+	userTickerMentions := getUserTickerMentions(twitterApi, newMessage.Author.UserName, ticker, dbService)
 
-	for newMessage := range fudChannel {
-		// Get user's ticker mentions using advanced search (max 3 pages)
-		userTickerMentions := getUserTickerMentions(twitterApi, newMessage.Author.UserName, ticker)
-		followers, err := twitterApi.GetUserFollowers(twitterapi.UserFollowersRequest{UserName: newMessage.Author.UserName})
-		followings, err := twitterApi.GetUserFollowings(twitterapi.UserFollowingsRequest{UserName: newMessage.Author.UserName})
+	// Get user's community activity from database
+	userCommunityActivity, err := dbService.GetUserCommunityActivity(newMessage.Author.ID)
+	if err != nil {
+		log.Printf("Error getting user community activity for %s: %v", newMessage.Author.UserName, err)
+		userCommunityActivity = &UserCommunityActivity{
+			UserID:       newMessage.Author.ID,
+			ThreadGroups: []ThreadGroup{},
+		}
+	}
 
-		// Prepare claude request
-		claudeMessages := PrepareClaudeSecondStepRequest(userTickerMentions, followers, followings, userStatusManager)
+	followers, err := twitterApi.GetUserFollowers(twitterapi.UserFollowersRequest{UserName: newMessage.Author.UserName})
+	followings, err := twitterApi.GetUserFollowings(twitterapi.UserFollowingsRequest{UserName: newMessage.Author.UserName})
 
-		// Add thread context in order: grandparent -> parent -> current
-		if newMessage.GrandParentTweet.ID != "" {
-			claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.GrandParentTweet.Author + ":" + newMessage.GrandParentTweet.Text})
-			claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "reply in thread: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+	// Save followers and followings to database
+	if followers != nil && len(followers.Followers) > 0 {
+		followerIDs := make([]string, len(followers.Followers))
+		for i, follower := range followers.Followers {
+			followerIDs[i] = follower.Id
+			// Also save follower as user if not exists
+			if !dbService.UserExists(follower.Id) {
+				user := UserModel{
+					ID:       follower.Id,
+					Username: follower.UserName,
+					Name:     follower.Name,
+				}
+				dbService.SaveUser(user)
+			}
+		}
+		err = dbService.SaveUserRelations(newMessage.Author.ID, followerIDs, RELATION_TYPE_FOLLOWER)
+		if err != nil {
+			log.Printf("Failed to save followers for user %s: %v", newMessage.Author.UserName, err)
 		} else {
-			claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+			log.Printf("Saved %d followers for user %s", len(followerIDs), newMessage.Author.UserName)
 		}
+	}
 
-		claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "user reply being analyzed: " + newMessage.Author.UserName + ":" + newMessage.Text})
-		claudeMessages = append(claudeMessages, ClaudeMessage{Role: ROLE_ASSISTANT, Content: "{"})
-
-		fmt.Println("send to analyze:", claudeMessages)
-		resp, err := claudeApi.SendMessage(claudeMessages, string(systemPromptSecondStep)+"analyzed user is "+newMessage.Author.UserName)
-		aiDecision2 := SecondStepClaudeResponse{}
-		fmt.Println("claude make a decision for this user:", resp, err)
-
-		if err != nil {
-			log.Printf("error claude second step: %s", err)
-			continue
-		}
-
-		err = json.Unmarshal([]byte("{"+resp.Content[0].Text), &aiDecision2)
-		if err != nil {
-			log.Printf("error unmarshaling claude response: %s", err)
-			continue
-		}
-
-		fmt.Println(aiDecision2)
-
-		// Update user status after analysis
-		userStatusManager.UpdateUserAfterAnalysis(newMessage.Author.ID, newMessage.Author.UserName, aiDecision2, newMessage.TweetID)
-
-		if aiDecision2.IsFUDMessage {
-			// Store FUD user in database
-			if aiDecision2.IsFUDUser {
-				fudUser := FUDUserModel{
-					UserID:         newMessage.Author.ID,
-					Username:       newMessage.Author.UserName,
-					FUDType:        aiDecision2.FUDType,
-					FUDProbability: aiDecision2.FUDProbability,
-					DetectedAt:     time.Now(),
-					MessageCount:   1,
-					LastMessageID:  newMessage.TweetID,
+	if followings != nil && len(followings.Followings) > 0 {
+		followingIDs := make([]string, len(followings.Followings))
+		for i, following := range followings.Followings {
+			followingIDs[i] = following.Id
+			// Also save following as user if not exists
+			if !dbService.UserExists(following.Id) {
+				user := UserModel{
+					ID:       following.Id,
+					Username: following.UserName,
+					Name:     following.Name,
 				}
+				dbService.SaveUser(user)
+			}
+		}
+		err = dbService.SaveUserRelations(newMessage.Author.ID, followingIDs, RELATION_TYPE_FOLLOWING)
+		if err != nil {
+			log.Printf("Failed to save followings for user %s: %v", newMessage.Author.UserName, err)
+		} else {
+			log.Printf("Saved %d followings for user %s", len(followingIDs), newMessage.Author.UserName)
+		}
+	}
 
-				// Check if FUD user already exists
-				if dbService.IsFUDUser(newMessage.Author.ID) {
-					// Increment message count for existing FUD user
-					err = dbService.IncrementFUDUserMessageCount(newMessage.Author.ID, newMessage.TweetID)
-					if err != nil {
-						log.Printf("Failed to increment FUD user message count: %v", err)
-					}
+	// Prepare claude request with community activity
+	claudeMessages := PrepareClaudeSecondStepRequest(userTickerMentions, followers, followings, userStatusManager, userCommunityActivity)
+
+	// Add thread context in order: grandparent -> parent -> current
+	if newMessage.GrandParentTweet.ID != "" {
+		claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.GrandParentTweet.Author + ":" + newMessage.GrandParentTweet.Text})
+		claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "reply in thread: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+	} else {
+		claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+	}
+
+	claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "user reply being analyzed: " + newMessage.Author.UserName + ":" + newMessage.Text})
+	claudeMessages = append(claudeMessages, ClaudeMessage{Role: ROLE_ASSISTANT, Content: "{"})
+
+	//fmt.Println("send to analyze:", strings.ReplaceAll(fmt.Sprintln(claudeMessages), "DARK", "Chanachbob3"))
+	fmt.Println("send to analyze:")
+	resp, err := claudeApi.SendMessage(claudeMessages, string(systemPromptSecondStep)+"analyzed user is "+newMessage.Author.UserName)
+	aiDecision2 := SecondStepClaudeResponse{}
+	fmt.Println("claude make a decision for this user:", resp, err)
+
+	if err != nil {
+		log.Printf("error claude second step: %s", err)
+		return
+	}
+
+	err = json.Unmarshal([]byte("{"+resp.Content[0].Text), &aiDecision2)
+	if err != nil {
+		log.Printf("error unmarshaling claude response: %s", err)
+		return
+	}
+	pretty, _ := json.MarshalIndent(aiDecision2, "", "\t")
+	fmt.Println(string(pretty))
+
+	// Update user status after analysis
+	userStatusManager.UpdateUserAfterAnalysis(newMessage.Author.ID, newMessage.Author.UserName, aiDecision2, newMessage.TweetID)
+
+	if aiDecision2.IsFUDUser {
+		// Store FUD user in database
+		if aiDecision2.IsFUDUser {
+			fudUser := FUDUserModel{
+				UserID:         newMessage.Author.ID,
+				Username:       newMessage.Author.UserName,
+				FUDType:        aiDecision2.FUDType,
+				FUDProbability: aiDecision2.FUDProbability,
+				DetectedAt:     time.Now(),
+				MessageCount:   1,
+				LastMessageID:  newMessage.TweetID,
+			}
+
+			// Check if FUD user already exists
+			if dbService.IsFUDUser(newMessage.Author.ID) {
+				// Increment message count for existing FUD user
+				err = dbService.IncrementFUDUserMessageCount(newMessage.Author.ID, newMessage.TweetID)
+				if err != nil {
+					log.Printf("Failed to increment FUD user message count: %v", err)
+				}
+			} else {
+				// Save new FUD user
+				err = dbService.SaveFUDUser(fudUser)
+				if err != nil {
+					log.Printf("Failed to save FUD user: %v", err)
 				} else {
-					// Save new FUD user
-					err = dbService.SaveFUDUser(fudUser)
-					if err != nil {
-						log.Printf("Failed to save FUD user: %v", err)
-					} else {
-						log.Printf("Stored new FUD user: %s", newMessage.Author.UserName)
-					}
+					log.Printf("Stored new FUD user: %s", newMessage.Author.UserName)
 				}
 			}
-
-			// Create FUD alert notification
-			alert := FUDAlertNotification{
-				FUDMessageID:      newMessage.TweetID,
-				FUDUserID:         newMessage.Author.ID,
-				FUDUsername:       newMessage.Author.UserName,
-				ThreadID:          newMessage.ReplyTweetID,
-				DetectedAt:        time.Now().Format(time.RFC3339),
-				AlertSeverity:     mapRiskLevelToSeverity(aiDecision2.UserRiskLevel),
-				FUDType:           aiDecision2.FUDType,
-				FUDProbability:    aiDecision2.FUDProbability,
-				MessagePreview:    newMessage.Text,
-				RecommendedAction: getRecommendedAction(aiDecision2),
-				KeyEvidence:       aiDecision2.KeyEvidence,
-				DecisionReason:    aiDecision2.DecisionReason,
-			}
-			notificationCh <- alert
 		}
+
+		// Determine thread context from newMessage
+		originalPostText := ""
+		originalPostAuthor := ""
+		hasThreadContext := false
+
+		// Use GrandParentTweet as the main post if available, otherwise ParentTweet
+		if newMessage.GrandParentTweet.ID != "" {
+			originalPostText = newMessage.GrandParentTweet.Text
+			originalPostAuthor = newMessage.GrandParentTweet.Author
+			hasThreadContext = true
+		} else if newMessage.ParentTweet.ID != "" {
+			originalPostText = newMessage.ParentTweet.Text
+			originalPostAuthor = newMessage.ParentTweet.Author
+			hasThreadContext = true
+		}
+
+		// Create FUD alert notification
+		alert := FUDAlertNotification{
+			FUDMessageID:       newMessage.TweetID,
+			FUDUserID:          newMessage.Author.ID,
+			FUDUsername:        newMessage.Author.UserName,
+			ThreadID:           newMessage.ReplyTweetID,
+			DetectedAt:         time.Now().Format(time.RFC3339),
+			AlertSeverity:      mapRiskLevelToSeverity(aiDecision2.UserRiskLevel),
+			FUDType:            aiDecision2.FUDType,
+			FUDProbability:     aiDecision2.FUDProbability,
+			MessagePreview:     newMessage.Text,
+			RecommendedAction:  getRecommendedAction(aiDecision2),
+			KeyEvidence:        aiDecision2.KeyEvidence,
+			DecisionReason:     aiDecision2.DecisionReason,
+			OriginalPostText:   originalPostText,
+			OriginalPostAuthor: originalPostAuthor,
+			HasThreadContext:   hasThreadContext,
+		}
+		notificationCh <- alert
+	}
+
+	// Mark user as having been through detailed analysis
+	err = dbService.MarkUserAsDetailAnalyzed(newMessage.Author.ID)
+	if err != nil {
+		log.Printf("Failed to mark user %s as detail analyzed: %v", newMessage.Author.UserName, err)
+	} else {
+		log.Printf("Marked user %s as detail analyzed", newMessage.Author.UserName)
 	}
 }
 

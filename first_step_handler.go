@@ -5,16 +5,103 @@ import (
 	"fmt"
 	"github.com/grutapig/hackaton/twitterapi"
 	"log"
+	"time"
 )
 
-// FirstStepHandler handles new message first step analysis
-func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan twitterapi.NewMessage, claudeApi *ClaudeApi, twitterApi *twitterapi.TwitterAPIService, systemPromptFirstStep []byte, userStatusManager *UserStatusManager, dbService *DatabaseService) {
+func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan twitterapi.NewMessage, claudeApi *ClaudeApi, systemPromptFirstStep []byte, userStatusManager *UserStatusManager, dbService *DatabaseService, notificationCh chan FUDAlertNotification) {
 	defer close(fudChannel)
 
 	for newMessage := range newMessageCh {
-		log.Println("Got a new message:", newMessage.Author.UserName, " - ", newMessage.Text, "reply to:", newMessage.ParentTweet.Text)
+		log.Println("Got a new message:", newMessage.Author.UserName, " - ", newMessage.Text, "parent to:", newMessage.ParentTweet.Text, " grandparent:", newMessage.GrandParentTweet.Text)
 
-		// First step analysis for new or clean users
+		// Check if user has been through detailed analysis before
+		isDetailAnalyzed := dbService.IsUserDetailAnalyzed(newMessage.Author.ID)
+
+		// Check if user is already known FUD user
+		isKnownFUDUser := dbService.IsFUDUser(newMessage.Author.ID)
+
+		if isKnownFUDUser {
+			// Known FUD user - ask Claude for quick analysis before sending notification
+			log.Printf("Known FUD user %s - performing quick analysis before notification", newMessage.Author.UserName)
+
+			messages := ClaudeMessages{}
+			// Add thread context in order: grandparent -> parent -> current
+			if newMessage.GrandParentTweet.ID != "" {
+				messages = append(messages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.GrandParentTweet.Author + ":" + newMessage.GrandParentTweet.Text})
+				messages = append(messages, ClaudeMessage{ROLE_USER, "reply in thread: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+			} else {
+				messages = append(messages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+			}
+
+			messages = append(messages, ClaudeMessage{ROLE_USER, "user reply being analyzed: " + newMessage.Author.UserName + ":" + newMessage.Text})
+			messages = append(messages, ClaudeMessage{ROLE_ASSISTANT, "{"})
+
+			resp, err := claudeApi.SendMessage(messages, fmt.Sprintf("%s\n<instruction>you must analyze %s user messages in the context of the full thread</instruction> \n this is a FUD user. be more attention for his message and his answers.", string(systemPromptFirstStep), newMessage.Author.UserName))
+			if err != nil {
+				log.Printf("error claude quick analysis: %s", err)
+				continue
+			}
+
+			aiDecision := FirstStepClaudeResponse{}
+			err = json.Unmarshal([]byte("{"+resp.Content[0].Text), &aiDecision)
+			if err != nil {
+				log.Printf("error unmarshaling claude response: %s", err)
+				continue
+			}
+
+			if aiDecision.IsFud {
+				// Determine thread context from newMessage
+				originalPostText := ""
+				originalPostAuthor := ""
+				hasThreadContext := false
+
+				// Use GrandParentTweet as the main post if available, otherwise ParentTweet
+				if newMessage.GrandParentTweet.ID != "" {
+					originalPostText = newMessage.GrandParentTweet.Text
+					originalPostAuthor = newMessage.GrandParentTweet.Author
+					hasThreadContext = true
+				} else if newMessage.ParentTweet.ID != "" {
+					originalPostText = newMessage.ParentTweet.Text
+					originalPostAuthor = newMessage.ParentTweet.Author
+					hasThreadContext = true
+				}
+
+				// Create quick FUD alert notification (with basic data from first step)
+				alert := FUDAlertNotification{
+					FUDMessageID:       newMessage.TweetID,
+					FUDUserID:          newMessage.Author.ID,
+					FUDUsername:        newMessage.Author.UserName,
+					ThreadID:           newMessage.ReplyTweetID,
+					DetectedAt:         time.Now().Format(time.RFC3339),
+					AlertSeverity:      "medium", // Default for known FUD users
+					FUDType:            "known_fud_user_activity",
+					FUDProbability:     float64(aiDecision.FudProbability) / 100.0, // Convert percentage to decimal
+					MessagePreview:     newMessage.Text,
+					RecommendedAction:  "MONITOR_ACTIVITY",
+					KeyEvidence:        []string{"Known FUD user", aiDecision.Reason},
+					DecisionReason:     "Quick analysis of known FUD user activity",
+					OriginalPostText:   originalPostText,
+					OriginalPostAuthor: originalPostAuthor,
+					HasThreadContext:   hasThreadContext,
+				}
+				log.Printf("Sending quick notification for known FUD user %s", newMessage.Author.UserName)
+				notificationCh <- alert
+			} else {
+				log.Printf("Known FUD user %s - message not FUD, ignoring", newMessage.Author.UserName)
+			}
+			continue
+		}
+
+		if !isDetailAnalyzed {
+			// New user - send to detailed analysis
+			log.Printf("New user %s - sending directly to detailed analysis", newMessage.Author.UserName)
+			userStatusManager.SetUserAnalyzing(newMessage.Author.ID, newMessage.Author.UserName)
+			fudChannel <- newMessage
+			continue
+		}
+
+		// Existing user (not FUD) - standard first step analysis
+		log.Printf("Existing user %s - performing first step analysis", newMessage.Author.UserName)
 		messages := ClaudeMessages{}
 
 		// Add thread context in order: grandparent -> parent -> current
@@ -27,22 +114,27 @@ func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan t
 
 		messages = append(messages, ClaudeMessage{ROLE_USER, "user reply being analyzed: " + newMessage.Author.UserName + ":" + newMessage.Text})
 		messages = append(messages, ClaudeMessage{ROLE_ASSISTANT, "{"})
-		fmt.Println(messages)
+
 		resp, err := claudeApi.SendMessage(messages, fmt.Sprintf("%s\n<instruction>you must analyze %s user messages in the context of the full thread</instruction>", string(systemPromptFirstStep), newMessage.Author.UserName))
 		if err != nil {
 			log.Printf("error claude: %s", err)
 			continue
 		}
 
-		fmt.Println(resp.Content[0].Text)
 		aiDecision := FirstStepClaudeResponse{}
 		err = json.Unmarshal([]byte("{"+resp.Content[0].Text), &aiDecision)
-		fmt.Println("ai decision", aiDecision, resp.Content[0].Text)
+		if err != nil {
+			log.Printf("error unmarshaling claude response: %s", err)
+			continue
+		}
 
 		if aiDecision.IsFud {
-			// Mark user as being analyzed to prevent duplicate analysis
+			// Send to detailed analysis
+			log.Printf("First step flagged user %s as FUD - sending to detailed analysis", newMessage.Author.UserName)
 			userStatusManager.SetUserAnalyzing(newMessage.Author.ID, newMessage.Author.UserName)
 			fudChannel <- newMessage
+		} else {
+			log.Printf("First step - user %s message not FUD, ignoring", newMessage.Author.UserName)
 		}
 	}
 }

@@ -12,7 +12,7 @@ import (
 
 const ENV_PROD_CONFIG = ".env"
 const ENV_DEV_CONFIG = ".dev.env"
-const PROMPT_FILE_STEP1 = "prompt_simple.txt"
+const PROMPT_FILE_STEP1 = "prompt1.txt"
 const PROMPT_FILE_STEP2 = "prompt2.txt"
 
 func main() {
@@ -76,12 +76,18 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		FirstStepHandler(newMessageCh, fudChannel, claudeApi, twitterApi, systemPromptFirstStep, userStatusManager, dbService)
+		FirstStepHandler(newMessageCh, fudChannel, claudeApi, systemPromptFirstStep, userStatusManager, dbService, notificationCh)
 	}()
+	//handle fud messages with dynamic routing
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		SecondStepHandler(fudChannel, notificationCh, twitterApi, claudeApi, systemPromptSecondStep, userStatusManager, ticker, dbService)
+		defer close(notificationCh)
+
+		for newMessage := range fudChannel {
+			log.Printf("Second step processing for user %s", newMessage.Author.UserName)
+			SecondStepHandler(newMessage, notificationCh, twitterApi, claudeApi, systemPromptSecondStep, userStatusManager, ticker, dbService)
+		}
 	}()
 	//notification handler
 	wg.Add(1)
@@ -94,7 +100,7 @@ func main() {
 	wg.Wait()
 }
 
-func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, followers *twitterapi.UserFollowersResponse, followings *twitterapi.UserFollowingsResponse, userStatusManager *UserStatusManager) ClaudeMessages {
+func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, followers *twitterapi.UserFollowersResponse, followings *twitterapi.UserFollowingsResponse, userStatusManager *UserStatusManager, communityActivity *UserCommunityActivity) ClaudeMessages {
 	claudeMessages := ClaudeMessages{}
 
 	// 1. User's ticker mentions with replied messages
@@ -146,16 +152,30 @@ func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, foll
 		})
 	}
 
+	// 3. User's community activity grouped by threads
+	if communityActivity != nil && len(communityActivity.ThreadGroups) > 0 {
+		communityActivityJSON, _ := json.Marshal(communityActivity)
+		claudeMessages = append(claudeMessages, ClaudeMessage{
+			Role:    ROLE_USER,
+			Content: fmt.Sprintf("USER'S COMMUNITY ACTIVITY (ALL POSTS AND REPLIES GROUPED BY THREADS):\n%s", string(communityActivityJSON)),
+		})
+	} else {
+		claudeMessages = append(claudeMessages, ClaudeMessage{
+			Role:    ROLE_USER,
+			Content: "USER'S COMMUNITY ACTIVITY: No activity found in community",
+		})
+	}
+
 	return claudeMessages
 }
 
 type FirstStepClaudeResponse struct {
-	IsFud          bool   `json:"is_fud"`
-	FudProbability int    `json:"fud_probability"`
-	Reason         string `json:"reason"`
+	IsFud          bool    `json:"is_fud"`
+	FudProbability float64 `json:"fud_probability"`
+	Reason         string  `json:"reason"`
 }
 type SecondStepClaudeResponse struct {
-	IsFUDMessage   bool     `json:"is_fud_message"`
+	IsFUDAttack    bool     `json:"is_fud_attack"`
 	IsFUDUser      bool     `json:"is_fud_user"`
 	FUDProbability float64  `json:"fud_probability"` // 0.0 - 1.0
 	FUDType        string   `json:"fud_type"`        // "professional_trojan_horse", "professional_direct_attack", "professional_statistical", "emotional_escalation", "emotional_dramatic_exit", "casual_criticism", "none"
@@ -186,7 +206,7 @@ type ReplyTweet struct {
 	Author    string `json:"author"`
 }
 
-func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username string, ticker string) *UserTickerMentionsData {
+func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username string, ticker string, dbService *DatabaseService) *UserTickerMentionsData {
 	const MAX_PAGES = 3
 	const TOKEN_LIMIT = 50000 // Half of typical Claude token limit
 
@@ -210,6 +230,10 @@ func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username st
 
 		// Process messages and collect reply IDs
 		for _, tweet := range searchResponse.Tweets {
+			// Save tweet to database with ticker search source
+			searchQuery := fmt.Sprintf("%s from:%s", ticker, username)
+			storeTweetAndUserWithSource(dbService, tweet, TWEET_SOURCE_TICKER_SEARCH, ticker, searchQuery)
+
 			userMessage := UserMessageWithReplies{
 				TweetID:     tweet.Id,
 				CreatedAt:   tweet.CreatedAt,
@@ -239,6 +263,9 @@ func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username st
 			// Create a map for quick lookup
 			replyMap := make(map[string]ReplyTweet)
 			for _, tweet := range repliedTweets.Tweets {
+				// Save context tweets to database
+				storeTweetAndUserWithSource(dbService, tweet, TWEET_SOURCE_CONTEXT, "", "context for "+username)
+
 				replyMap[tweet.Id] = ReplyTweet{
 					TweetID:   tweet.Id,
 					CreatedAt: tweet.CreatedAt,
@@ -284,7 +311,7 @@ func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username st
 	return result
 }
 
-func SendIfNotExistsTweetToChannel(tweet twitterapi.Tweet, tweetsBefore []string, newMessageCh chan twitterapi.NewMessage, tweetsExistsStorage map[string]int, parentTweet twitterapi.Tweet, grandParentTweet twitterapi.Tweet) {
+func SendIfNotExistsTweetToChannel(tweet twitterapi.Tweet, newMessageCh chan twitterapi.NewMessage, tweetsExistsStorage map[string]int, parentTweet twitterapi.Tweet, grandParentTweet twitterapi.Tweet) {
 	if _, ok := tweetsExistsStorage[tweet.Id]; !ok {
 		newMessageCh <- twitterapi.NewMessage{
 			TweetID:      tweet.Id,
@@ -309,7 +336,6 @@ func SendIfNotExistsTweetToChannel(tweet twitterapi.Tweet, tweetsBefore []string
 			ReplyCount:   tweet.ReplyCount,
 			LikeCount:    tweet.LikeCount,
 			RetweetCount: tweet.RetweetCount,
-			TweetsBefore: tweetsBefore,
 		}
 	}
 }
