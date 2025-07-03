@@ -1506,13 +1506,9 @@ func (t *TelegramService) handleFudListCommand(chatID int64, args []string) {
 			sourceEmoji = "💾"
 		}
 
-		message.WriteString(fmt.Sprintf("<b>%d.</b> %s @%s\n", i+1, sourceEmoji, username))
+		message.WriteString(fmt.Sprintf("<b>%d.</b> %s @%s (%s)\n", i+1, sourceEmoji, username, userID))
 		message.WriteString(fmt.Sprintf("    🎯 Type: %s (%.0f%%)\n", fudType, probability*100))
 		message.WriteString(fmt.Sprintf("    📅 Detected: %s\n", detectedAt.Format("2006-01-02 15:04")))
-
-		if messageCount, ok := user["message_count"].(int); ok && messageCount > 0 {
-			message.WriteString(fmt.Sprintf("    💬 Messages: %d\n", messageCount))
-		}
 
 		if userSummary, ok := user["user_summary"].(string); ok && userSummary != "" {
 			message.WriteString(fmt.Sprintf("    👤 Profile: %s\n", userSummary))
@@ -1522,34 +1518,7 @@ func (t *TelegramService) handleFudListCommand(chatID int64, args []string) {
 		message.WriteString("    🔍 <b>Commands:</b>\n")
 		message.WriteString(fmt.Sprintf("      • /history_%s - Message history\n", username))
 		message.WriteString(fmt.Sprintf("      • /ticker_history_%s - Ticker posts\n", username))
-		message.WriteString(fmt.Sprintf("      • /cache_%s - Cached analysis\n", username))
-		message.WriteString(fmt.Sprintf("      • /export_%s - Full export\n", username))
-
-		// Get detailed analysis from database if available
-		if source == "active" {
-			fudUser, err := t.dbService.GetFUDUser(userID)
-			if err == nil && fudUser != nil {
-				// Create a detail link using stored analysis data
-				detailID := t.generateNotificationID()
-
-				// Create minimal alert for detail view
-				alert := FUDAlertNotification{
-					FUDUserID:      userID,
-					FUDUsername:    username,
-					FUDType:        fudType,
-					FUDProbability: probability,
-					DetectedAt:     detectedAt.Format(time.RFC3339),
-					AlertSeverity:  "medium", // Default for list view
-				}
-
-				// Store notification for detail access
-				t.notifMutex.Lock()
-				t.notifications[detailID] = alert
-				t.notifMutex.Unlock()
-
-				message.WriteString(fmt.Sprintf("      • /detail_%s - Detailed analysis\n", detailID))
-			}
-		}
+		message.WriteString(fmt.Sprintf("      • /cache_%s - detailed analysis\n", username))
 		message.WriteString("\n")
 	}
 

@@ -183,17 +183,15 @@ func main() {
 		FirstStepHandler(newMessageCh, fudChannel, claudeApi, systemPromptFirstStep, userStatusManager, dbService, notificationCh)
 	}()
 	//handle fud messages with dynamic routing
-	for i := 1; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 
-			for newMessage := range fudChannel {
-				log.Printf("Second step processing for user %s", newMessage.Author.UserName)
-				SecondStepHandler(newMessage, notificationCh, twitterApi, claudeApi, systemPromptSecondStep, userStatusManager, ticker, dbService)
-			}
-		}()
-	}
+		for newMessage := range fudChannel {
+			log.Printf("Second step processing for user %s", newMessage.Author.UserName)
+			SecondStepHandler(newMessage, notificationCh, twitterApi, claudeApi, systemPromptSecondStep, userStatusManager, ticker, dbService)
+		}
+	}()
 	//notification handler
 	wg.Add(1)
 	go func() {

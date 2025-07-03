@@ -737,7 +737,7 @@ func (s *DatabaseService) GetCachedAnalysis(userID string) (*SecondStepClaudeRes
 // HasValidCachedAnalysis checks if user has valid cached analysis
 func (s *DatabaseService) HasValidCachedAnalysis(userID string) bool {
 	var count int64
-	s.db.Model(&CachedAnalysisModel{}).Where("user_id = ? AND expires_at > ?", userID, time.Now()).Count(&count)
+	s.db.Model(&CachedAnalysisModel{}).Where("user_id = ?", userID).Count(&count)
 	return count > 0
 }
 
@@ -772,7 +772,7 @@ func (s *DatabaseService) GetAllFUDUsersFromCache() ([]map[string]interface{}, e
 
 	// Get from cached analysis (FUD users only)
 	var cachedFUD []CachedAnalysisModel
-	err = s.db.Where("is_fud_user = ? AND expires_at > ?", true, time.Now()).
+	err = s.db.Where("is_fud_user = ?", true).
 		Order("analyzed_at DESC").Find(&cachedFUD).Error
 	if err != nil {
 		return nil, err

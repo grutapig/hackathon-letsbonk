@@ -125,6 +125,7 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 	fmt.Println("claude make a decision for this user:", resp, err)
 
 	if err != nil {
+		failManualAnalysisTask(newMessage, err, dbService)
 		log.Printf("error claude second step: %s", err)
 		return
 	}
@@ -395,4 +396,7 @@ func completeManualAnalysisTask(newMessage twitterapi.NewMessage, aiDecision2 Se
 	} else {
 		log.Printf("Completed manual analysis task %s for user %s", newMessage.TaskID, newMessage.Author.UserName)
 	}
+}
+func failManualAnalysisTask(newMessage twitterapi.NewMessage, err error, dbService *DatabaseService) {
+	dbService.SetAnalysisTaskError(newMessage.TaskID, err.Error())
 }
