@@ -489,16 +489,25 @@ func (s *DatabaseService) GetTopActiveUsers(limit int) ([]UserModel, error) {
 	var users []UserModel
 
 	// Get users ordered by tweet count (most active first)
-	err := s.db.Raw(`
+	query := `
 		SELECT u.*, COUNT(t.id) as tweet_count 
 		FROM users u 
 		LEFT JOIN tweets t ON u.id = t.user_id 
 		GROUP BY u.id 
-		ORDER BY tweet_count DESC, u.username ASC 
-		LIMIT ?
-	`, limit).Scan(&users).Error
-	if err != nil {
-		return nil, err
+		HAVING tweet_count > 0
+		ORDER BY tweet_count DESC, u.username ASC`
+
+	if limit > 0 {
+		query += " LIMIT ?"
+		err := s.db.Raw(query, limit).Scan(&users).Error
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		err := s.db.Raw(query).Scan(&users).Error
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return users, nil
@@ -822,7 +831,11 @@ func (s *DatabaseService) GetUserTickerOpinionsByUsername(username, ticker strin
 	if ticker != "" {
 		query = query.Where("ticker = ?", ticker)
 	}
-	err := query.Order("tweet_created_at DESC").Limit(limit).Find(&opinions).Error
+	query = query.Order("tweet_created_at DESC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	err := query.Find(&opinions).Error
 	return opinions, err
 }
 
