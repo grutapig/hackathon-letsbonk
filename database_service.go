@@ -48,7 +48,7 @@ func NewDatabaseService(dbPath string) (*DatabaseService, error) {
 
 // runMigrations runs database migrations
 func (s *DatabaseService) runMigrations() error {
-	return s.db.AutoMigrate(&TweetModel{}, &UserModel{}, &FUDUserModel{}, &UserRelationModel{})
+	return s.db.AutoMigrate(&TweetModel{}, &UserModel{}, &FUDUserModel{}, &UserRelationModel{}, &AnalysisTaskModel{})
 }
 
 // Tweet related methods
@@ -519,6 +519,26 @@ func (s *DatabaseService) GetAllUserMessagesByUsername(username string) ([]Tweet
 	return s.GetAllUserMessages(user.ID)
 }
 
+// GetTopActiveUsers gets the most active users based on tweet count
+func (s *DatabaseService) GetTopActiveUsers(limit int) ([]UserModel, error) {
+	var users []UserModel
+
+	// Get users ordered by tweet count (most active first)
+	err := s.db.Raw(`
+		SELECT u.*, COUNT(t.id) as tweet_count 
+		FROM users u 
+		LEFT JOIN tweets t ON u.id = t.user_id 
+		GROUP BY u.id 
+		ORDER BY tweet_count DESC, u.username ASC 
+		LIMIT ?
+	`, limit).Scan(&users).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
 // SearchUsers searches for users by username substring (case-insensitive)
 func (s *DatabaseService) SearchUsers(query string, limit int) ([]UserModel, error) {
 	var users []UserModel
@@ -575,6 +595,71 @@ func (s *DatabaseService) GetUserTweetForAnalysis(username string) (*TweetModel,
 
 	err = s.db.Where("user_id = ?", user.ID).Order("created_at DESC").First(&tweet).Error
 	return &tweet, err
+}
+
+// Analysis Task Management Methods
+
+// CreateAnalysisTask creates a new analysis task
+func (s *DatabaseService) CreateAnalysisTask(task *AnalysisTaskModel) error {
+	return s.db.Create(task).Error
+}
+
+// GetAnalysisTask gets analysis task by ID
+func (s *DatabaseService) GetAnalysisTask(taskID string) (*AnalysisTaskModel, error) {
+	var task AnalysisTaskModel
+	err := s.db.Where("id = ?", taskID).First(&task).Error
+	return &task, err
+}
+
+// UpdateAnalysisTask updates existing analysis task
+func (s *DatabaseService) UpdateAnalysisTask(task *AnalysisTaskModel) error {
+	return s.db.Save(task).Error
+}
+
+// UpdateAnalysisTaskProgress updates task progress and step
+func (s *DatabaseService) UpdateAnalysisTaskProgress(taskID string, step string, progressText string) error {
+	return s.db.Model(&AnalysisTaskModel{}).
+		Where("id = ?", taskID).
+		Updates(map[string]interface{}{
+			"current_step":  step,
+			"progress_text": progressText,
+			"status":        ANALYSIS_STATUS_RUNNING,
+			"updated_at":    time.Now(),
+		}).Error
+}
+
+// SetAnalysisTaskError sets task as failed with error message
+func (s *DatabaseService) SetAnalysisTaskError(taskID string, errorMessage string) error {
+	now := time.Now()
+	return s.db.Model(&AnalysisTaskModel{}).
+		Where("id = ?", taskID).
+		Updates(map[string]interface{}{
+			"status":        ANALYSIS_STATUS_FAILED,
+			"error_message": errorMessage,
+			"completed_at":  &now,
+			"updated_at":    now,
+		}).Error
+}
+
+// CompleteAnalysisTask marks task as completed with results
+func (s *DatabaseService) CompleteAnalysisTask(taskID string, resultData string) error {
+	now := time.Now()
+	return s.db.Model(&AnalysisTaskModel{}).
+		Where("id = ?", taskID).
+		Updates(map[string]interface{}{
+			"status":       ANALYSIS_STATUS_COMPLETED,
+			"current_step": ANALYSIS_STEP_COMPLETED,
+			"result_data":  resultData,
+			"completed_at": &now,
+			"updated_at":   now,
+		}).Error
+}
+
+// GetRunningAnalysisTasks gets all running analysis tasks for status monitoring
+func (s *DatabaseService) GetRunningAnalysisTasks() ([]AnalysisTaskModel, error) {
+	var tasks []AnalysisTaskModel
+	err := s.db.Where("status = ?", ANALYSIS_STATUS_RUNNING).Find(&tasks).Error
+	return tasks, err
 }
 
 // Close closes the database connection

@@ -22,7 +22,7 @@ const ROLE_ASSISTANT = "assistant"
 
 const CLAUDE_MODEL = "claude-sonnet-4-0"
 const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
-const DEFAULT_TEMPERATURE = 0.1
+const DEFAULT_TEMPERATURE = 0.01
 const MAX_TOKENS = 64000
 const DEFAULT_MAX_TOKENS = 1000
 

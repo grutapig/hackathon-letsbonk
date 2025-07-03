@@ -77,7 +77,9 @@ func main() {
 	defer dbService.Close()
 	log.Println("Database service initialized successfully")
 
-	telegramService, err := NewTelegramService(os.Getenv(ENV_TELEGRAM_API_KEY), os.Getenv(ENV_PROXY_DSN), os.Getenv(ENV_TELEGRAM_ADMIN_CHAT_ID), notificationFormatter, dbService)
+	fudChannel := make(chan twitterapi.NewMessage, 10)
+
+	telegramService, err := NewTelegramService(os.Getenv(ENV_TELEGRAM_API_KEY), os.Getenv(ENV_PROXY_DSN), os.Getenv(ENV_TELEGRAM_ADMIN_CHAT_ID), notificationFormatter, dbService, fudChannel)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to initialize telegram service: %v", err))
 	}
@@ -103,8 +105,6 @@ func main() {
 	}
 	//init channels
 	newMessageCh := make(chan twitterapi.NewMessage, 10)
-	//fud channel is for second step
-	fudChannel := make(chan twitterapi.NewMessage, 10)
 	//notification channel
 	notificationCh := make(chan FUDAlertNotification, 10)
 
@@ -225,6 +225,7 @@ type SecondStepClaudeResponse struct {
 	UserRiskLevel  string   `json:"user_risk_level"` // "critical", "high", "medium", "low"
 	KeyEvidence    []string `json:"key_evidence"`    // 2-4 most important evidence points
 	DecisionReason string   `json:"decision_reason"` // 1-2 sentence summary of why this decision was made
+	UserSummary    string   `json:"user_summary"`    // Short conclusion about user type for notifications
 }
 
 type UserTickerMentionsData struct {

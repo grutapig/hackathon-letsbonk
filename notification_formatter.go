@@ -21,6 +21,7 @@ type FUDAlertNotification struct {
 	RecommendedAction string   `json:"recommended_action"`
 	KeyEvidence       []string `json:"key_evidence"`
 	DecisionReason    string   `json:"decision_reason"`
+	UserSummary       string   `json:"user_summary"` // Short conclusion about user type
 	// Thread context fields
 	OriginalPostText      string `json:"original_post_text"`
 	OriginalPostAuthor    string `json:"original_post_author"`
@@ -70,18 +71,30 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 		}
 	}
 
-	message := fmt.Sprintf(`%s <b>FUD ALERT - %s SEVERITY</b>
+	// Determine if this is a FUD alert or clean analysis
+	isFUDAlert := !strings.Contains(alert.FUDType, "manual_analysis_clean") && alert.FUDType != "none"
 
-%s <b>Attack Type:</b> %s
+	var alertTitle, typeSection string
+	if isFUDAlert {
+		alertTitle = fmt.Sprintf("%s <b>FUD ALERT - %s SEVERITY</b>", severityEmoji, strings.ToUpper(alert.AlertSeverity))
+		typeSection = fmt.Sprintf("%s <b>Attack Type:</b> %s\n👤 <b>User Profile:</b> %s", typeEmoji, nf.formatFUDType(alert.FUDType), alert.UserSummary)
+	} else {
+		alertTitle = fmt.Sprintf("✅ <b>ANALYSIS COMPLETE - USER CLEAN</b>")
+		typeSection = fmt.Sprintf("👤 <b>User Type:</b> %s", alert.UserSummary)
+	}
+
+	message := fmt.Sprintf(`%s
+
+%s
 🎯 <b>User:</b> @%s
 📊 <b>Confidence:</b> %.0f%%
 ⚡ <b>Action:</b> %s
 
-💬 <b>FUD Message:</b>
+💬 <b>Message:</b>
 <i>%s</i>%s
 
 🔗 <b>Links:</b>
-• <a href="https://twitter.com/%s/status/%s">FUD Message</a>
+• <a href="https://twitter.com/%s/status/%s">Message</a>
 • <a href="https://twitter.com/user/status/%s">Original Thread</a>
 
 🔍 <b>Investigation:</b>
@@ -90,8 +103,8 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 
 ⏰ <b>Detected:</b> %s
 🆔 <b>IDs:</b> User: %s | Tweet: %s`,
-		severityEmoji, strings.ToUpper(alert.AlertSeverity),
-		typeEmoji, nf.formatFUDType(alert.FUDType),
+		alertTitle,
+		typeSection,
 		alert.FUDUsername,
 		alert.FUDProbability*100,
 		alert.RecommendedAction,
@@ -110,9 +123,21 @@ func (nf *NotificationFormatter) FormatForTelegramWithDetail(alert FUDAlertNotif
 	severityEmoji := nf.getSeverityEmoji(alert.AlertSeverity)
 	typeEmoji := nf.getFUDTypeEmoji(alert.FUDType)
 
-	message := fmt.Sprintf(`%s <b>FUD ALERT - %s SEVERITY</b>
+	// Determine if this is a FUD alert or clean analysis
+	isFUDAlert := !strings.Contains(alert.FUDType, "manual_analysis_clean") && alert.FUDType != "none"
 
-%s <b>Attack Type:</b> %s
+	var alertTitle, typeSection string
+	if isFUDAlert {
+		alertTitle = fmt.Sprintf("%s <b>FUD ALERT - %s SEVERITY</b>", severityEmoji, strings.ToUpper(alert.AlertSeverity))
+		typeSection = fmt.Sprintf("%s <b>Attack Type:</b> %s\n👤 <b>User Profile:</b> %s", typeEmoji, nf.formatFUDType(alert.FUDType), alert.UserSummary)
+	} else {
+		alertTitle = fmt.Sprintf("✅ <b>ANALYSIS COMPLETE - USER CLEAN</b>")
+		typeSection = fmt.Sprintf("👤 <b>User Type:</b> %s", alert.UserSummary)
+	}
+
+	message := fmt.Sprintf(`%s
+
+%s
 🎯 <b>User:</b> @%s
 📊 <b>Confidence:</b> %.0f%%
 ⚡ <b>Action:</b> %s
@@ -121,7 +146,7 @@ func (nf *NotificationFormatter) FormatForTelegramWithDetail(alert FUDAlertNotif
 <i>%s</i>
 
 🔗 <b>Quick Links:</b>
-• <a href="https://twitter.com/%s/status/%s">FUD Message</a>
+• <a href="https://twitter.com/%s/status/%s">Message</a>
 • <a href="https://twitter.com/user/status/%s">Original Thread</a>
 
 🔍 <b>Investigation Commands:</b>
@@ -130,8 +155,8 @@ func (nf *NotificationFormatter) FormatForTelegramWithDetail(alert FUDAlertNotif
 • /export_%s - Export full history
 
 ⏰ <b>Detected:</b> %s`,
-		severityEmoji, strings.ToUpper(alert.AlertSeverity),
-		typeEmoji, nf.formatFUDType(alert.FUDType),
+		alertTitle,
+		typeSection,
 		alert.FUDUsername,
 		alert.FUDProbability*100,
 		alert.RecommendedAction,
@@ -192,16 +217,40 @@ func (nf *NotificationFormatter) FormatDetailedView(alert FUDAlertNotification) 
 		}
 	}
 
-	message := fmt.Sprintf(`%s <b>DETAILED FUD ANALYSIS</b>
+	// Determine if this is a FUD alert or clean analysis
+	isFUDAlert := !strings.Contains(alert.FUDType, "manual_analysis_clean") && alert.FUDType != "none"
 
-🏷️ <b>CLASSIFICATION</b>
+	var analysisTitle, classificationSection string
+	if isFUDAlert {
+		analysisTitle = fmt.Sprintf("%s <b>DETAILED FUD ANALYSIS</b>", severityEmoji)
+		classificationSection = fmt.Sprintf(`🏷️ <b>CLASSIFICATION</b>
 %s Type: %s
 🎯 Target User: @%s (ID: %s)
 📊 Confidence Level: %.1f%%
 🚨 Risk Level: %s
-⚡ Recommended Action: %s
+⚡ Recommended Action: %s`, typeEmoji, nf.formatFUDType(alert.FUDType), alert.FUDUsername, alert.FUDUserID, alert.FUDProbability*100, strings.ToUpper(alert.AlertSeverity), alert.RecommendedAction)
+	} else {
+		analysisTitle = fmt.Sprintf("✅ <b>DETAILED USER ANALYSIS - CLEAN</b>")
+		classificationSection = fmt.Sprintf(`👤 <b>USER CLASSIFICATION</b>
+✅ Status: Not a FUD user
+👤 User Type: %s
+🎯 Analyzed User: @%s (ID: %s)
+📊 Confidence Level: %.1f%%
+⚡ Recommended Action: %s`, alert.UserSummary, alert.FUDUsername, alert.FUDUserID, alert.FUDProbability*100, alert.RecommendedAction)
+	}
 
-💬 <b>FUD MESSAGE (FULL TEXT)</b>
+	var messageTitle string
+	if isFUDAlert {
+		messageTitle = "💬 <b>FUD MESSAGE (FULL TEXT)</b>"
+	} else {
+		messageTitle = "💬 <b>ANALYZED MESSAGE (FULL TEXT)</b>"
+	}
+
+	message := fmt.Sprintf(`%s
+
+%s
+
+%s
 <i>%s</i>%s
 
 🔍 <b>KEY EVIDENCE</b>
@@ -211,7 +260,7 @@ func (nf *NotificationFormatter) FormatDetailedView(alert FUDAlertNotification) 
 <i>%s</i>
 
 🔗 <b>INVESTIGATION LINKS</b>
-• <a href="https://twitter.com/%s/status/%s">View FUD Message</a>
+• <a href="https://twitter.com/%s/status/%s">View Message</a>
 • <a href="https://twitter.com/user/status/%s">View Original Thread</a>
 • <a href="https://twitter.com/%s">User Profile</a>
 
@@ -221,15 +270,12 @@ func (nf *NotificationFormatter) FormatDetailedView(alert FUDAlertNotification) 
 
 📅 <b>DETECTION METADATA</b>
 Detected At: %s
-FUD Message ID: %s
+Message ID: %s
 Thread ID: %s
 User ID: %s`,
-		severityEmoji,
-		typeEmoji, nf.formatFUDType(alert.FUDType),
-		alert.FUDUsername, alert.FUDUserID,
-		alert.FUDProbability*100,
-		strings.ToUpper(alert.AlertSeverity),
-		alert.RecommendedAction,
+		analysisTitle,
+		classificationSection,
+		messageTitle,
 		alert.MessagePreview,
 		threadContextSection,
 		evidenceList,

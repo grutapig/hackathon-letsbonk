@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/grutapig/hackaton/twitterapi"
 	"io"
 	"log"
 	"mime/multipart"
@@ -31,11 +32,12 @@ type TelegramService struct {
 	formatter     *NotificationFormatter
 	dbService     *DatabaseService
 	// Services for manual analysis
-	twitterApi             interface{} // Will be set later
-	claudeApi              interface{} // Will be set later
-	userStatusManager      interface{} // Will be set later
-	systemPromptSecondStep []byte      // Will be set later
-	ticker                 string      // Will be set later
+	twitterApi             interface{}                // Will be set later
+	claudeApi              interface{}                // Will be set later
+	userStatusManager      interface{}                // Will be set later
+	systemPromptSecondStep []byte                     // Will be set later
+	ticker                 string                     // Will be set later
+	analysisChannel        chan twitterapi.NewMessage // Channel for manual analysis requests
 }
 
 type TelegramUpdate struct {
@@ -83,7 +85,25 @@ type TelegramSendDocumentRequest struct {
 	ParseMode string `json:"parse_mode,omitempty"`
 }
 
-func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, formatter *NotificationFormatter, dbService *DatabaseService) (*TelegramService, error) {
+type TelegramEditMessageRequest struct {
+	ChatID         int64  `json:"chat_id"`
+	MessageID      int64  `json:"message_id"`
+	Text           string `json:"text"`
+	ParseMode      string `json:"parse_mode,omitempty"`
+	DisablePreview bool   `json:"disable_web_page_preview,omitempty"`
+}
+
+type TelegramSendMessageResponse struct {
+	OK     bool `json:"ok"`
+	Result struct {
+		MessageID int64 `json:"message_id"`
+		Chat      struct {
+			ID int64 `json:"id"`
+		} `json:"chat"`
+	} `json:"result"`
+}
+
+func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, formatter *NotificationFormatter, dbService *DatabaseService, analysisChannel chan twitterapi.NewMessage) (*TelegramService, error) {
 	transport := &http.Transport{}
 	if proxyDSN != "" {
 		proxyURL, err := url.Parse(proxyDSN)
@@ -99,14 +119,15 @@ func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, f
 	}
 
 	service := &TelegramService{
-		apiKey:        apiKey,
-		client:        client,
-		chatIDs:       make(map[int64]bool),
-		lastOffset:    0,
-		isRunning:     false,
-		notifications: make(map[string]FUDAlertNotification),
-		formatter:     formatter,
-		dbService:     dbService,
+		apiKey:          apiKey,
+		client:          client,
+		chatIDs:         make(map[int64]bool),
+		lastOffset:      0,
+		isRunning:       false,
+		notifications:   make(map[string]FUDAlertNotification),
+		formatter:       formatter,
+		dbService:       dbService,
+		analysisChannel: analysisChannel,
 	}
 
 	// Add initial chat IDs if provided (comma-separated)
@@ -190,25 +211,34 @@ func (t *TelegramService) processUpdates() error {
 
 		// Handle commands and messages
 		if update.Message.Text != "" {
-			if strings.HasPrefix(update.Message.Text, "/detail_") {
-				t.handleDetailCommand(chatID, update.Message.Text)
-			} else if strings.HasPrefix(update.Message.Text, "/history_") {
-				t.handleHistoryCommand(chatID, update.Message.Text)
-			} else if strings.HasPrefix(update.Message.Text, "/export_") {
-				t.handleExportCommand(chatID, update.Message.Text)
-			} else if strings.HasPrefix(update.Message.Text, "/analyze ") {
-				t.handleAnalyzeCommand(chatID, update.Message.Text)
-			} else if strings.HasPrefix(update.Message.Text, "/search ") {
-				t.handleSearchCommand(chatID, update.Message.Text)
-			} else if strings.HasPrefix(update.Message.Text, "/import ") {
-				t.handleImportCommand(chatID, update.Message.Text)
-			} else {
-				response := fmt.Sprintf("📋 Your Chat Info:\nChat ID: %d\nMessage: %s\nRegistered chats: %d\n\n🔧 Available Commands:\n• /detail_<id> - View FUD details\n• /history_<username> - View recent messages\n• /export_<username> - Export full history\n• /analyze <username> - Run second step analysis\n• /search <query> - Search users by name\n• /import <csv_file> - Import tweets from CSV",
-					chatID,
-					update.Message.Text,
-					len(t.chatIDs))
+			text := strings.TrimSpace(update.Message.Text)
 
-				go t.SendMessage(chatID, response)
+			// Parse command and arguments
+			parts := strings.Fields(text)
+			if len(parts) == 0 {
+				return nil
+			}
+
+			command := parts[0]
+			args := parts[1:]
+
+			switch {
+			case strings.HasPrefix(command, "/detail_"):
+				go t.handleDetailCommand(chatID, text)
+			case strings.HasPrefix(command, "/history_"):
+				go t.handleHistoryCommand(chatID, text)
+			case strings.HasPrefix(command, "/export_"):
+				go t.handleExportCommand(chatID, text)
+			case command == "/analyze":
+				go t.handleAnalyzeCommand(chatID, args)
+			case command == "/search":
+				go t.handleSearchCommand(chatID, args)
+			case command == "/import":
+				go t.handleImportCommand(chatID, args)
+			case command == "/help" || command == "/start":
+				go t.handleHelpCommand(chatID)
+			default:
+				go t.handleHelpCommand(chatID)
 			}
 		}
 	}
@@ -266,6 +296,74 @@ func (t *TelegramService) SendMessage(chatID int64, text string) error {
 	if resp.StatusCode != 200 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("telegram send message failed: %s", string(body))
+	}
+
+	return nil
+}
+
+func (t *TelegramService) SendMessageWithID(chatID int64, text string) (int64, error) {
+	reqBody := TelegramSendMessageRequest{
+		ChatID:         chatID,
+		Text:           text,
+		ParseMode:      "HTML",
+		DisablePreview: true,
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return 0, err
+	}
+
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", t.apiKey)
+	resp, err := t.client.Post(url, "application/json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("telegram send message failed: %s", string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	var response TelegramSendMessageResponse
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return 0, err
+	}
+
+	return response.Result.MessageID, nil
+}
+
+func (t *TelegramService) EditMessage(chatID int64, messageID int64, text string) error {
+	reqBody := TelegramEditMessageRequest{
+		ChatID:         chatID,
+		MessageID:      messageID,
+		Text:           text,
+		ParseMode:      "HTML",
+		DisablePreview: true,
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/editMessageText", t.apiKey)
+	resp, err := t.client.Post(url, "application/json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("telegram edit message failed: %s", string(body))
 	}
 
 	return nil
@@ -548,31 +646,38 @@ func (t *TelegramService) writeToFile(filename, content string) error {
 	return err
 }
 
-func (t *TelegramService) handleSearchCommand(chatID int64, command string) {
-	// Extract search query from command "/search query"
-	parts := strings.SplitN(command, " ", 2)
-	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
-		t.SendMessage(chatID, "❌ Invalid command format. Use /search <query>\nExample: /search john")
-		return
+func (t *TelegramService) handleSearchCommand(chatID int64, args []string) {
+	var users []UserModel
+	var err error
+	var searchTitle string
+
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+		// No query provided - show top 10 most active users
+		users, err = t.dbService.GetTopActiveUsers(10)
+		searchTitle = "🔥 <b>Top 10 Most Active Users</b>"
+	} else {
+		// Search by query
+		query := strings.Join(args, " ")
+		users, err = t.dbService.SearchUsers(query, 20)
+		searchTitle = fmt.Sprintf("🔍 <b>Search Results for '%s'</b> (Found %d)", query, len(users))
 	}
-
-	query := strings.TrimSpace(parts[1])
-
-	// Search for users
-	users, err := t.dbService.SearchUsers(query, 20)
 	if err != nil {
 		t.SendMessage(chatID, fmt.Sprintf("❌ Error searching users: %v", err))
 		return
 	}
 
 	if len(users) == 0 {
-		t.SendMessage(chatID, fmt.Sprintf("🔍 No users found matching '%s'", query))
+		if len(args) == 0 {
+			t.SendMessage(chatID, "📭 No active users found in database")
+		} else {
+			t.SendMessage(chatID, fmt.Sprintf("🔍 No users found matching '%s'", strings.Join(args, " ")))
+		}
 		return
 	}
 
 	// Format search results
 	var searchResults strings.Builder
-	searchResults.WriteString(fmt.Sprintf("🔍 <b>Search Results for '%s'</b> (Found %d)\n\n", query, len(users)))
+	searchResults.WriteString(searchTitle + "\n\n")
 
 	for i, user := range users {
 		fudStatus := ""
@@ -601,58 +706,57 @@ func (t *TelegramService) handleSearchCommand(chatID int64, command string) {
 	t.SendMessage(chatID, searchResults.String())
 }
 
-func (t *TelegramService) handleAnalyzeCommand(chatID int64, command string) {
-	// Extract username from command "/analyze username"
-	parts := strings.SplitN(command, " ", 2)
-	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
+func (t *TelegramService) handleAnalyzeCommand(chatID int64, args []string) {
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 		t.SendMessage(chatID, "❌ Invalid command format. Use /analyze <username>\nExample: /analyze suspicious_user")
 		return
 	}
 
-	username := strings.TrimSpace(parts[1])
+	username := strings.TrimSpace(args[0])
 
-	// Send processing message
-	t.SendMessage(chatID, fmt.Sprintf("🔄 Starting analysis for @%s...\n\nNote: Manual analysis runs with limited context (no parent/grandparent tweets)", username))
+	// Generate unique task ID
+	taskID := t.generateNotificationID()
 
-	// Get user's latest tweet for analysis
-	tweet, err := t.dbService.GetUserTweetForAnalysis(username)
+	// Send initial progress message
+	initialText := fmt.Sprintf("🔄 <b>Starting Analysis for @%s</b>\n\n📋 <b>Status:</b> Initializing...\n🆔 <b>Task ID:</b> <code>%s</code>\n\n⏳ Please wait, this may take a few minutes.", username, taskID)
+	messageID, err := t.SendMessageWithID(chatID, initialText)
 	if err != nil {
-		t.SendMessage(chatID, fmt.Sprintf("❌ Could not find recent tweet for @%s: %v", username, err))
+		t.SendMessage(chatID, fmt.Sprintf("❌ Failed to start analysis: %v", err))
 		return
 	}
 
-	// Check if user already analyzed
-	if t.dbService.IsUserDetailAnalyzed(tweet.UserID) {
-		isFUDUser := t.dbService.IsFUDUser(tweet.UserID)
-		fudStatus := "✅ Clean"
-		if isFUDUser {
-			fudStatus = "🚨 FUD User"
-		}
+	// Create analysis task in database
+	task := &AnalysisTaskModel{
+		ID:             taskID,
+		Username:       username,
+		Status:         ANALYSIS_STATUS_PENDING,
+		CurrentStep:    ANALYSIS_STEP_INIT,
+		ProgressText:   "Initializing analysis...",
+		TelegramChatID: chatID,
+		MessageID:      messageID,
+		StartedAt:      time.Now(),
+	}
 
-		response := fmt.Sprintf("ℹ️ <b>@%s Already Analyzed</b>\n\nStatus: %s\n\n💡 Use /history_%s to view recent messages", username, fudStatus, username)
-		t.SendMessage(chatID, response)
+	err = t.dbService.CreateAnalysisTask(task)
+	if err != nil {
+		t.EditMessage(chatID, messageID, fmt.Sprintf("❌ <b>Analysis Failed</b>\n\nFailed to create analysis task: %v", err))
 		return
 	}
 
-	// For now, just show that we found the user and their latest tweet
-	response := fmt.Sprintf("✅ <b>Found @%s</b>\n\nLatest Tweet: <i>%s</i>\nTweet ID: <code>%s</code>\nCreated: %s\n\n⚠️ <b>Note:</b> Manual analysis feature requires additional integration work to connect with SecondStepHandler.",
-		username,
-		t.truncateText(tweet.Text, 150),
-		tweet.ID,
-		tweet.CreatedAt.Format("2006-01-02 15:04"))
+	// Start analysis in goroutine
+	go t.processAnalysisTask(taskID)
 
-	t.SendMessage(chatID, response)
+	// Start progress monitor
+	go t.monitorAnalysisProgress(taskID)
 }
 
-func (t *TelegramService) handleImportCommand(chatID int64, command string) {
-	// Extract CSV file path from command "/import csv_file.csv"
-	parts := strings.SplitN(command, " ", 2)
-	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
+func (t *TelegramService) handleImportCommand(chatID int64, args []string) {
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 		t.SendMessage(chatID, "❌ Invalid command format. Use /import <csv_file>\nExample: /import community_tweets.csv")
 		return
 	}
 
-	csvFile := strings.TrimSpace(parts[1])
+	csvFile := strings.TrimSpace(args[0])
 
 	// Send processing message
 	t.SendMessage(chatID, fmt.Sprintf("🔄 Starting CSV import from '%s'...\nThis may take several minutes for large files.", csvFile))
@@ -690,4 +794,279 @@ func (t *TelegramService) handleImportCommand(chatID int64, command string) {
 
 		t.SendMessage(chatID, successMessage)
 	}()
+}
+
+func (t *TelegramService) handleHelpCommand(chatID int64) {
+	helpMessage := `🤖 <b>FUD Detection Bot - Available Commands</b>
+
+🔍 <b>Search & Analysis Commands:</b>
+• <code>/search [query]</code> - Search users by username/name
+  Example: /search john or /search (shows top 10 active users)
+
+• <code>/analyze &lt;username&gt;</code> - Run manual FUD analysis
+  Example: /analyze suspicious_user
+
+📊 <b>User Investigation Commands:</b>
+• <code>/history_&lt;username&gt;</code> - View recent messages (20 latest)
+  Example: /history_john_doe
+
+• <code>/export_&lt;username&gt;</code> - Export full message history as file
+  Example: /export_john_doe
+
+• <code>/detail_&lt;id&gt;</code> - View detailed FUD analysis
+  (ID provided in alert notifications)
+
+📁 <b>Data Management Commands:</b>
+• <code>/import &lt;csv_file&gt;</code> - Import tweets from CSV file
+  Example: /import community_tweets.csv
+
+❓ <b>Help Commands:</b>
+• <code>/help</code> or <code>/start</code> - Show this help message
+
+💡 <b>Usage Tips:</b>
+• Commands with underscore (_) need exact format
+• Commands with space accept parameters
+• All commands are case-sensitive
+• Bot responds to FUD alerts automatically
+
+🔔 <b>Alert Types:</b>
+• 🚨🔥 Critical - Immediate action required
+• 🚨 High - Monitor closely  
+• ⚠️ Medium - Standard monitoring
+• ℹ️ Low - Log and watch
+
+👤 <b>Your Chat ID:</b> <code>%d</code>`
+
+	t.SendMessage(chatID, fmt.Sprintf(helpMessage, chatID))
+}
+
+// processAnalysisTask processes the actual analysis work
+func (t *TelegramService) processAnalysisTask(taskID string) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Analysis task %s panicked: %v", taskID, r)
+			t.dbService.SetAnalysisTaskError(taskID, fmt.Sprintf("Internal error: %v", r))
+		}
+	}()
+
+	// Get task details
+	task, err := t.dbService.GetAnalysisTask(taskID)
+	if err != nil {
+		log.Printf("Failed to get analysis task %s: %v", taskID, err)
+		return
+	}
+
+	username := task.Username
+
+	// Step 1: User lookup
+	t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_USER_LOOKUP, "Looking up user information...")
+	user, err := t.dbService.GetUserByUsername(username)
+	var userID string
+	if err != nil {
+		userID = "unknown_" + username
+		log.Printf("User %s not found in database, using placeholder ID", username)
+	} else {
+		userID = user.ID
+		// Update task with found user ID
+		task.UserID = userID
+		t.dbService.UpdateAnalysisTask(task)
+	}
+
+	// Step 2: Get user tweet for analysis context
+	t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_TICKER_SEARCH, "Searching for user's ticker mentions...")
+	tweet, err := t.dbService.GetUserTweetForAnalysis(username)
+
+	var newMessage twitterapi.NewMessage
+
+	if err != nil {
+		log.Printf("No tweet found for %s, creating placeholder data", username)
+
+		newMessage = twitterapi.NewMessage{
+			TweetID:      "manual_analysis_" + username,
+			ReplyTweetID: "",
+			Author: struct {
+				UserName string
+				Name     string
+				ID       string
+			}{
+				UserName: username,
+				Name:     username,
+				ID:       userID,
+			},
+			Text:      "Manual analysis request - no recent tweets found",
+			CreatedAt: time.Now().Format(time.RFC3339),
+			ParentTweet: struct {
+				ID     string
+				Author string
+				Text   string
+			}{
+				ID:     "placeholder_parent",
+				Author: "system",
+				Text:   "No parent tweet available - manual analysis",
+			},
+			GrandParentTweet: struct {
+				ID     string
+				Author string
+				Text   string
+			}{
+				ID:     "",
+				Author: "",
+				Text:   "",
+			},
+			IsManualAnalysis:  true,
+			ForceNotification: true,
+			TaskID:            taskID,
+		}
+	} else {
+		newMessage = twitterapi.NewMessage{
+			TweetID:      tweet.ID,
+			ReplyTweetID: tweet.InReplyToID,
+			Author: struct {
+				UserName string
+				Name     string
+				ID       string
+			}{
+				UserName: username,
+				Name:     username,
+				ID:       tweet.UserID,
+			},
+			Text:      tweet.Text,
+			CreatedAt: tweet.CreatedAt.Format(time.RFC3339),
+			ParentTweet: struct {
+				ID     string
+				Author string
+				Text   string
+			}{
+				ID:     "manual_parent",
+				Author: "system",
+				Text:   "Manual analysis - limited context available",
+			},
+			GrandParentTweet: struct {
+				ID     string
+				Author string
+				Text   string
+			}{
+				ID:     "",
+				Author: "",
+				Text:   "",
+			},
+			IsManualAnalysis:  true,
+			ForceNotification: true,
+			TaskID:            taskID,
+		}
+	}
+
+	// Step 3: Send to analysis channel
+	t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_CLAUDE_ANALYSIS, "Sending for FUD analysis...")
+
+	select {
+	case t.analysisChannel <- newMessage:
+		// Successfully sent to analysis - now wait for neural network processing
+		t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_CLAUDE_ANALYSIS, "Processing with neural network...")
+
+		// Task completion will be handled by SecondStepHandler after Claude analysis
+		log.Printf("Manual analysis task %s sent to Claude processing pipeline", taskID)
+
+	default:
+		// Analysis channel is full
+		t.dbService.SetAnalysisTaskError(taskID, "Analysis channel is full, please try again later")
+	}
+}
+
+// monitorAnalysisProgress monitors task progress and updates Telegram message
+func (t *TelegramService) monitorAnalysisProgress(taskID string) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			task, err := t.dbService.GetAnalysisTask(taskID)
+			if err != nil {
+				log.Printf("Failed to get analysis task %s for monitoring: %v", taskID, err)
+				return
+			}
+
+			// Update progress message
+			progressText := t.formatAnalysisProgress(task)
+			err = t.EditMessage(task.TelegramChatID, task.MessageID, progressText)
+			if err != nil {
+				log.Printf("Failed to update progress message for task %s: %v", taskID, err)
+			}
+
+			// Stop monitoring if task is completed or failed
+			if task.Status == ANALYSIS_STATUS_COMPLETED || task.Status == ANALYSIS_STATUS_FAILED {
+				return
+			}
+		}
+	}
+}
+
+// formatAnalysisProgress formats the progress message for Telegram
+func (t *TelegramService) formatAnalysisProgress(task *AnalysisTaskModel) string {
+	if task.Status == ANALYSIS_STATUS_FAILED {
+		return fmt.Sprintf(`❌ <b>Analysis Failed for @%s</b>
+
+⚠️ <b>Error:</b> %s
+🆔 <b>Task ID:</b> <code>%s</code>
+
+🔄 You can try running the analysis again.`,
+			task.Username,
+			task.ErrorMessage,
+			task.ID)
+	}
+
+	if task.Status == ANALYSIS_STATUS_COMPLETED {
+		return fmt.Sprintf(`✅ <b>Analysis Completed for @%s</b>
+
+📋 <b>Status:</b> Finished successfully
+🔍 <b>Results:</b> Check FUD alerts for analysis results
+🆔 <b>Task ID:</b> <code>%s</code>
+
+✅ Analysis has been completed and results sent to notification system.`,
+			task.Username,
+			task.ID)
+	}
+
+	// Running status with progress steps
+	stepEmoji := "🔄"
+	stepText := task.ProgressText
+
+	switch task.CurrentStep {
+	case ANALYSIS_STEP_INIT:
+		stepEmoji = "⚙️"
+	case ANALYSIS_STEP_USER_LOOKUP:
+		stepEmoji = "🔍"
+	case ANALYSIS_STEP_TICKER_SEARCH:
+		stepEmoji = "📊"
+	case ANALYSIS_STEP_FOLLOWERS:
+		stepEmoji = "👥"
+	case ANALYSIS_STEP_FOLLOWINGS:
+		stepEmoji = "👤"
+	case ANALYSIS_STEP_COMMUNITY_ACTIVITY:
+		stepEmoji = "🏠"
+	case ANALYSIS_STEP_CLAUDE_ANALYSIS:
+		stepEmoji = "🤖"
+	case ANALYSIS_STEP_SAVING_RESULTS:
+		stepEmoji = "💾"
+	}
+
+	// Calculate elapsed time
+	elapsed := time.Since(task.StartedAt)
+	elapsedStr := fmt.Sprintf("%.0fs", elapsed.Seconds())
+	if elapsed.Minutes() >= 1 {
+		elapsedStr = fmt.Sprintf("%.1fm", elapsed.Minutes())
+	}
+
+	return fmt.Sprintf(`🔄 <b>Analyzing @%s</b>
+
+%s <b>Current Step:</b> %s
+⏱️ <b>Running Time:</b> %s
+🆔 <b>Task ID:</b> <code>%s</code>
+
+⏳ Please wait, analysis in progress...`,
+		task.Username,
+		stepEmoji, stepText,
+		elapsedStr,
+		task.ID)
 }

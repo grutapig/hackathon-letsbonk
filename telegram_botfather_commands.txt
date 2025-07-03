@@ -1,0 +1,25 @@
+BotFather Commands for FUD Detection Telegram Bot
+
+Copy and paste these commands into BotFather when setting up the bot:
+
+help - Show available commands and usage instructions
+start - Show available commands and usage instructions  
+search - Search users by username or show top active users
+analyze - Run manual FUD analysis on a specific user
+import - Import tweets from CSV file
+
+Note: The following commands are dynamic and cannot be registered in BotFather as they contain variable parameters:
+- /history_<username> - View recent messages for user
+- /export_<username> - Export full message history for user  
+- /detail_<id> - View detailed FUD analysis (ID from alerts)
+
+Usage Examples:
+/search john - Search for users with "john" in username/name
+/search - Show top 10 most active users
+/analyze suspicious_user - Analyze user "suspicious_user"
+/import tweets.csv - Import data from tweets.csv file
+/history_john_doe - View recent messages from john_doe
+/export_john_doe - Export all messages from john_doe
+/detail_abc123 - View detailed analysis for notification ID abc123
+
+The bot will automatically send FUD alerts when suspicious activity is detected.

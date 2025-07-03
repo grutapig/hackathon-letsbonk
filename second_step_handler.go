@@ -86,7 +86,13 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 	pretty, _ := json.MarshalIndent(claudeMessages, "", "\t")
 	fmt.Println("send to analyze:", string(pretty))
 	//fmt.Println("send to analyze:")
-	resp, err := claudeApi.SendMessage(claudeMessages, string(systemPromptSecondStep)+"analyzed user is "+newMessage.Author.UserName)
+	systemPromptModified := string(systemPromptSecondStep)
+	if newMessage.IsManualAnalysis {
+		systemPromptModified += "\n\nIMPORTANT: This is a MANUAL ANALYSIS REQUEST initiated by an administrator. Please provide a thorough analysis regardless of normal filtering criteria."
+	}
+	systemPromptModified += " analyzed user is " + newMessage.Author.UserName
+
+	resp, err := claudeApi.SendMessage(claudeMessages, systemPromptModified)
 	aiDecision2 := SecondStepClaudeResponse{}
 	fmt.Println("claude make a decision for this user:", resp, err)
 
@@ -106,8 +112,8 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 	// Update user status after analysis
 	userStatusManager.UpdateUserAfterAnalysis(newMessage.Author.ID, newMessage.Author.UserName, aiDecision2, newMessage.TweetID)
 
-	if aiDecision2.IsFUDUser {
-		// Store FUD user in database
+	if aiDecision2.IsFUDUser || newMessage.ForceNotification {
+		// Store FUD user in database only if actually detected as FUD
 		if aiDecision2.IsFUDUser {
 			fudUser := FUDUserModel{
 				UserID:         newMessage.Author.ID,
@@ -163,20 +169,33 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 			hasThreadContext = true
 		}
 
-		// Create FUD alert notification
+		// Create alert notification
+		alertType := aiDecision2.FUDType
+		alertSeverity := mapRiskLevelToSeverity(aiDecision2.UserRiskLevel)
+
+		if newMessage.IsManualAnalysis {
+			if !aiDecision2.IsFUDUser {
+				alertType = "manual_analysis_clean"
+				alertSeverity = "low"
+			} else {
+				alertType = "manual_analysis_fud"
+			}
+		}
+
 		alert := FUDAlertNotification{
 			FUDMessageID:          newMessage.TweetID,
 			FUDUserID:             newMessage.Author.ID,
 			FUDUsername:           newMessage.Author.UserName,
 			ThreadID:              newMessage.ReplyTweetID,
 			DetectedAt:            time.Now().Format(time.RFC3339),
-			AlertSeverity:         mapRiskLevelToSeverity(aiDecision2.UserRiskLevel),
-			FUDType:               aiDecision2.FUDType,
+			AlertSeverity:         alertSeverity,
+			FUDType:               alertType,
 			FUDProbability:        aiDecision2.FUDProbability,
 			MessagePreview:        newMessage.Text,
 			RecommendedAction:     getRecommendedAction(aiDecision2),
 			KeyEvidence:           aiDecision2.KeyEvidence,
 			DecisionReason:        aiDecision2.DecisionReason,
+			UserSummary:           aiDecision2.UserSummary,
 			OriginalPostText:      originalPostText,
 			OriginalPostAuthor:    originalPostAuthor,
 			ParentPostText:        parentPostText,
@@ -194,6 +213,23 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 		log.Printf("Failed to mark user %s as detail analyzed: %v", newMessage.Author.UserName, err)
 	} else {
 		log.Printf("Marked user %s as detail analyzed", newMessage.Author.UserName)
+	}
+
+	// Complete manual analysis task if this was a manual analysis
+	if newMessage.IsManualAnalysis && newMessage.TaskID != "" {
+		// Update progress to saving results
+		dbService.UpdateAnalysisTaskProgress(newMessage.TaskID, ANALYSIS_STEP_SAVING_RESULTS, "Analysis completed, saving results...")
+
+		// Complete the task with analysis results
+		resultData := fmt.Sprintf(`{"analysis_complete": true, "is_fud": %t, "fud_type": "%s", "user_summary": "%s", "timestamp": "%s"}`,
+			aiDecision2.IsFUDUser, aiDecision2.FUDType, aiDecision2.UserSummary, time.Now().Format(time.RFC3339))
+
+		err = dbService.CompleteAnalysisTask(newMessage.TaskID, resultData)
+		if err != nil {
+			log.Printf("Failed to complete analysis task %s: %v", newMessage.TaskID, err)
+		} else {
+			log.Printf("Completed manual analysis task %s for user %s", newMessage.TaskID, newMessage.Author.UserName)
+		}
 	}
 }
 

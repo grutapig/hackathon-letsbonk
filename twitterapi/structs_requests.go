@@ -51,9 +51,12 @@ type NewMessage struct {
 		Author string
 		Text   string
 	}
-	ReplyCount   int
-	LikeCount    int
-	RetweetCount int
+	ReplyCount        int
+	LikeCount         int
+	RetweetCount      int
+	IsManualAnalysis  bool
+	ForceNotification bool
+	TaskID            string // For tracking manual analysis progress
 }
 
 const (

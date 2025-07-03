@@ -100,3 +100,47 @@ type UserReply struct {
 	RepliedToAuthor string    `json:"replied_to_author"`
 	RepliedToText   string    `json:"replied_to_text"`
 }
+
+// AnalysisTask model for tracking manual analysis progress
+type AnalysisTaskModel struct {
+	gorm.Model
+	ID             string     `gorm:"primaryKey;column:id" json:"id"`                      // Unique task ID
+	Username       string     `gorm:"column:username;index" json:"username"`               // Target username
+	UserID         string     `gorm:"column:user_id;index" json:"user_id"`                 // Target user ID (if found)
+	Status         string     `gorm:"column:status;index" json:"status"`                   // pending, running, completed, failed
+	CurrentStep    string     `gorm:"column:current_step" json:"current_step"`             // Current processing step
+	ProgressText   string     `gorm:"column:progress_text" json:"progress_text"`           // Human readable progress
+	TelegramChatID int64      `gorm:"column:telegram_chat_id" json:"telegram_chat_id"`     // Chat where analysis was requested
+	MessageID      int64      `gorm:"column:message_id" json:"message_id"`                 // Telegram message ID to edit
+	ErrorMessage   string     `gorm:"column:error_message" json:"error_message,omitempty"` // Error details if failed
+	ResultData     string     `gorm:"column:result_data" json:"result_data,omitempty"`     // JSON result of analysis
+	StartedAt      time.Time  `gorm:"column:started_at" json:"started_at"`
+	CompletedAt    *time.Time `gorm:"column:completed_at" json:"completed_at,omitempty"`
+	CreatedAt      time.Time  `gorm:"column:created_at" json:"created_at"`
+	UpdatedAt      time.Time  `gorm:"column:updated_at" json:"updated_at"`
+}
+
+func (AnalysisTaskModel) TableName() string {
+	return "analysis_tasks"
+}
+
+// Analysis task status constants
+const (
+	ANALYSIS_STATUS_PENDING   = "pending"
+	ANALYSIS_STATUS_RUNNING   = "running"
+	ANALYSIS_STATUS_COMPLETED = "completed"
+	ANALYSIS_STATUS_FAILED    = "failed"
+)
+
+// Analysis task step constants
+const (
+	ANALYSIS_STEP_INIT               = "init"
+	ANALYSIS_STEP_USER_LOOKUP        = "user_lookup"
+	ANALYSIS_STEP_TICKER_SEARCH      = "ticker_search"
+	ANALYSIS_STEP_FOLLOWERS          = "followers"
+	ANALYSIS_STEP_FOLLOWINGS         = "followings"
+	ANALYSIS_STEP_COMMUNITY_ACTIVITY = "community_activity"
+	ANALYSIS_STEP_CLAUDE_ANALYSIS    = "claude_analysis"
+	ANALYSIS_STEP_SAVING_RESULTS     = "saving_results"
+	ANALYSIS_STEP_COMPLETED          = "completed"
+)
