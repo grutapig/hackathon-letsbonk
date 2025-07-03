@@ -21,16 +21,17 @@ import (
 )
 
 type TelegramService struct {
-	apiKey        string
-	client        *http.Client
-	chatIDs       map[int64]bool
-	chatMutex     sync.RWMutex
-	lastOffset    int64
-	isRunning     bool
-	notifications map[string]FUDAlertNotification
-	notifMutex    sync.RWMutex
-	formatter     *NotificationFormatter
-	dbService     *DatabaseService
+	apiKey            string
+	client            *http.Client
+	chatIDs           map[int64]bool
+	chatMutex         sync.RWMutex
+	lastOffset        int64
+	isRunning         bool
+	notifications     map[string]FUDAlertNotification
+	notifMutex        sync.RWMutex
+	formatter         *NotificationFormatter
+	dbService         *DatabaseService
+	notificationUsers *NotificationUsersManager // Persistent notification users list
 	// Services for manual analysis
 	twitterApi             interface{}                // Will be set later
 	claudeApi              interface{}                // Will be set later
@@ -103,7 +104,7 @@ type TelegramSendMessageResponse struct {
 	} `json:"result"`
 }
 
-func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, formatter *NotificationFormatter, dbService *DatabaseService, analysisChannel chan twitterapi.NewMessage) (*TelegramService, error) {
+func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, formatter *NotificationFormatter, dbService *DatabaseService, analysisChannel chan twitterapi.NewMessage, notificationUsers *NotificationUsersManager) (*TelegramService, error) {
 	transport := &http.Transport{}
 	if proxyDSN != "" {
 		proxyURL, err := url.Parse(proxyDSN)
@@ -119,15 +120,16 @@ func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, f
 	}
 
 	service := &TelegramService{
-		apiKey:          apiKey,
-		client:          client,
-		chatIDs:         make(map[int64]bool),
-		lastOffset:      0,
-		isRunning:       false,
-		notifications:   make(map[string]FUDAlertNotification),
-		formatter:       formatter,
-		dbService:       dbService,
-		analysisChannel: analysisChannel,
+		apiKey:            apiKey,
+		client:            client,
+		chatIDs:           make(map[int64]bool),
+		lastOffset:        0,
+		isRunning:         false,
+		notifications:     make(map[string]FUDAlertNotification),
+		formatter:         formatter,
+		dbService:         dbService,
+		analysisChannel:   analysisChannel,
+		notificationUsers: notificationUsers,
 	}
 
 	// Add initial chat IDs if provided (comma-separated)
@@ -235,6 +237,16 @@ func (t *TelegramService) processUpdates() error {
 				go t.handleSearchCommand(chatID, args)
 			case command == "/import":
 				go t.handleImportCommand(chatID, args)
+			case command == "/notify":
+				go t.handleNotifyCommand(chatID, args)
+			case command == "/fudlist":
+				go t.handleFudListCommand(chatID)
+			case command == "/tasks":
+				go t.handleTasksCommand(chatID)
+			case command == "/top20_analyze":
+				go t.handleTop20AnalyzeCommand(chatID)
+			case command == "/batch_analyze":
+				go t.handleBatchAnalyzeCommand(chatID, args)
 			case command == "/help" || command == "/start":
 				go t.handleHelpCommand(chatID)
 			default:
@@ -820,6 +832,17 @@ func (t *TelegramService) handleHelpCommand(chatID int64) {
 • <code>/import &lt;csv_file&gt;</code> - Import tweets from CSV file
   Example: /import community_tweets.csv
 
+🔔 <b>Notification Management:</b>
+• <code>/notify</code> - Show notification users list
+• <code>/notify &lt;username&gt;</code> - Add user to notification list
+  Example: /notify suspicious_user
+
+📊 <b>Analysis Management:</b>
+• <code>/fudlist</code> - Show all detected FUD users
+• <code>/tasks</code> - Show running analysis tasks
+• <code>/batch_analyze &lt;user1,user2,user3&gt;</code> - Analyze multiple users
+• <code>/top20_analyze</code> - Analyze top 20 most active users (admin only)
+
 ❓ <b>Help Commands:</b>
 • <code>/help</code> or <code>/start</code> - Show this help message
 
@@ -1069,4 +1092,543 @@ func (t *TelegramService) formatAnalysisProgress(task *AnalysisTaskModel) string
 		stepEmoji, stepText,
 		elapsedStr,
 		task.ID)
+}
+
+func (t *TelegramService) handleNotifyCommand(chatID int64, args []string) {
+	if len(args) == 0 {
+		// Show current notification users and usage
+		users := t.notificationUsers.GetAllUsers()
+		userCount := t.notificationUsers.GetUserCount()
+
+		var message strings.Builder
+		message.WriteString("🔔 <b>Notification Users Management</b>\n\n")
+
+		if userCount == 0 {
+			message.WriteString("📭 No users in notification list\n\n")
+		} else {
+			message.WriteString(fmt.Sprintf("👥 <b>Current Users (%d):</b>\n", userCount))
+			for i, user := range users {
+				message.WriteString(fmt.Sprintf("%d. @%s\n", i+1, user))
+			}
+			message.WriteString("\n")
+		}
+
+		message.WriteString("💡 <b>Usage:</b>\n")
+		message.WriteString("• <code>/notify</code> - Show this list\n")
+		message.WriteString("• <code>/notify &lt;username&gt;</code> - Add user to notification list\n")
+		message.WriteString("• <code>/notify add &lt;username&gt;</code> - Add user to notification list\n\n")
+		message.WriteString("📝 <b>Examples:</b>\n")
+		message.WriteString("• <code>/notify john_doe</code>\n")
+		message.WriteString("• <code>/notify add suspicious_user</code>\n\n")
+		message.WriteString("ℹ️ Added users will receive FUD alert notifications")
+
+		t.SendMessage(chatID, message.String())
+		return
+	}
+
+	var username string
+	if len(args) >= 2 && strings.ToLower(args[0]) == "add" {
+		username = strings.TrimSpace(args[1])
+	} else {
+		username = strings.TrimSpace(args[0])
+	}
+
+	// Clean username (remove @ if present)
+	username = strings.TrimPrefix(username, "@")
+
+	if username == "" {
+		t.SendMessage(chatID, "❌ Invalid username. Please provide a valid username.\nExample: /notify john_doe")
+		return
+	}
+
+	// Check if user already exists
+	if t.notificationUsers.HasUser(username) {
+		t.SendMessage(chatID, fmt.Sprintf("ℹ️ User @%s is already in the notification list", username))
+		return
+	}
+
+	// Add user to notification list
+	err := t.notificationUsers.AddUser(username)
+	if err != nil {
+		t.SendMessage(chatID, fmt.Sprintf("❌ Failed to add user @%s to notification list: %v", username, err))
+		return
+	}
+
+	// Send success message
+	totalUsers := t.notificationUsers.GetUserCount()
+	successMessage := fmt.Sprintf("✅ <b>User Added to Notification List</b>\n\n👤 <b>User:</b> @%s\n📊 <b>Total notification users:</b> %d\n\n🔔 This user will now receive FUD alert notifications when detected", username, totalUsers)
+	t.SendMessage(chatID, successMessage)
+
+	log.Printf("Added user @%s to notification list via Telegram command from chat %d", username, chatID)
+}
+
+func (t *TelegramService) handleFudListCommand(chatID int64) {
+	fudUsers, err := t.dbService.GetAllFUDUsersFromCache()
+	if err != nil {
+		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving FUD users: %v", err))
+		return
+	}
+
+	if len(fudUsers) == 0 {
+		t.SendMessage(chatID, "✅ <b>No FUD Users Detected</b>\n\n🎉 Great news! No FUD users have been detected in the system.")
+		return
+	}
+
+	var message strings.Builder
+	message.WriteString(fmt.Sprintf("🚨 <b>Detected FUD Users (%d total)</b>\n\n", len(fudUsers)))
+
+	activeFUD := 0
+	cachedFUD := 0
+
+	for i, user := range fudUsers {
+		source := user["source"].(string)
+		if source == "active" {
+			activeFUD++
+		} else {
+			cachedFUD++
+		}
+
+		username := user["username"].(string)
+		fudType := user["fud_type"].(string)
+		probability := user["fud_probability"].(float64)
+		detectedAt := user["detected_at"].(time.Time)
+
+		sourceEmoji := "🔥"
+		if source == "cached" {
+			sourceEmoji = "💾"
+		}
+
+		message.WriteString(fmt.Sprintf("<b>%d.</b> %s @%s\n", i+1, sourceEmoji, username))
+		message.WriteString(fmt.Sprintf("    🎯 Type: %s (%.0f%%)\n", fudType, probability*100))
+		message.WriteString(fmt.Sprintf("    📅 Detected: %s\n", detectedAt.Format("2006-01-02 15:04")))
+
+		if messageCount, ok := user["message_count"].(int); ok && messageCount > 0 {
+			message.WriteString(fmt.Sprintf("    💬 Messages: %d\n", messageCount))
+		}
+
+		if userSummary, ok := user["user_summary"].(string); ok && userSummary != "" {
+			message.WriteString(fmt.Sprintf("    👤 Profile: %s\n", userSummary))
+		}
+
+		message.WriteString(fmt.Sprintf("    🔍 Commands: /history_%s | /analyze %s\n\n", username, username))
+	}
+
+	message.WriteString(fmt.Sprintf("📊 <b>Summary:</b>\n• 🔥 Active FUD users: %d\n• 💾 Cached detections: %d\n\n", activeFUD, cachedFUD))
+	message.WriteString("💡 <b>Legend:</b>\n• 🔥 Active threat (persistent in FUD table)\n• 💾 Cached analysis (expires in 24h)")
+
+	t.SendMessage(chatID, message.String())
+}
+
+func (t *TelegramService) handleTasksCommand(chatID int64) {
+	tasks, err := t.dbService.GetAllRunningAnalysisTasks()
+	if err != nil {
+		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving analysis tasks: %v", err))
+		return
+	}
+
+	if len(tasks) == 0 {
+		t.SendMessage(chatID, "✅ <b>No Running Analysis Tasks</b>\n\n🎯 All analysis tasks have been completed.")
+		return
+	}
+
+	var message strings.Builder
+	message.WriteString(fmt.Sprintf("🔄 <b>Running Analysis Tasks (%d total)</b>\n\n", len(tasks)))
+
+	for i, task := range tasks {
+		statusEmoji := "⏳"
+		if task.Status == ANALYSIS_STATUS_RUNNING {
+			statusEmoji = "🔄"
+		}
+
+		stepEmoji := "🔄"
+		switch task.CurrentStep {
+		case ANALYSIS_STEP_INIT:
+			stepEmoji = "⚙️"
+		case ANALYSIS_STEP_USER_LOOKUP:
+			stepEmoji = "🔍"
+		case ANALYSIS_STEP_TICKER_SEARCH:
+			stepEmoji = "📊"
+		case ANALYSIS_STEP_FOLLOWERS:
+			stepEmoji = "👥"
+		case ANALYSIS_STEP_FOLLOWINGS:
+			stepEmoji = "👤"
+		case ANALYSIS_STEP_COMMUNITY_ACTIVITY:
+			stepEmoji = "🏠"
+		case ANALYSIS_STEP_CLAUDE_ANALYSIS:
+			stepEmoji = "🤖"
+		case ANALYSIS_STEP_SAVING_RESULTS:
+			stepEmoji = "💾"
+		}
+
+		elapsed := time.Since(task.StartedAt)
+		elapsedStr := fmt.Sprintf("%.0fs", elapsed.Seconds())
+		if elapsed.Minutes() >= 1 {
+			elapsedStr = fmt.Sprintf("%.1fm", elapsed.Minutes())
+		}
+
+		message.WriteString(fmt.Sprintf("<b>%d.</b> %s @%s\n", i+1, statusEmoji, task.Username))
+		message.WriteString(fmt.Sprintf("    %s Step: %s\n", stepEmoji, task.ProgressText))
+		message.WriteString(fmt.Sprintf("    ⏱️ Running: %s\n", elapsedStr))
+		message.WriteString(fmt.Sprintf("    🆔 Task ID: <code>%s</code>\n\n", task.ID))
+	}
+
+	message.WriteString("💡 Use <code>/analyze &lt;username&gt;</code> to start new analysis")
+
+	t.SendMessage(chatID, message.String())
+}
+
+func (t *TelegramService) handleTop20AnalyzeCommand(chatID int64) {
+	// Get top 20 most active users
+	users, err := t.dbService.GetTopActiveUsers(20)
+	if err != nil {
+		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving top users: %v", err))
+		return
+	}
+
+	if len(users) == 0 {
+		t.SendMessage(chatID, "📭 No users found in database")
+		return
+	}
+
+	// Send initial confirmation
+	t.SendMessage(chatID, fmt.Sprintf("🔄 <b>Starting Top 20 Analysis</b>\n\n📊 Found %d users to analyze\n⏳ This will take several minutes...\n\n💡 Use /tasks to monitor progress", len(users)))
+
+	// Start analysis for each user in background
+	analysisCount := 0
+	skippedCount := 0
+
+	for _, user := range users {
+		// Check if user already has recent cached analysis
+		if t.dbService.HasValidCachedAnalysis(user.ID) {
+			log.Printf("Skipping user %s - has valid cached analysis", user.Username)
+			skippedCount++
+			continue
+		}
+
+		// Generate task ID for tracking
+		taskID := t.generateNotificationID()
+
+		// Create analysis task in database
+		task := &AnalysisTaskModel{
+			ID:             taskID,
+			Username:       user.Username,
+			UserID:         user.ID,
+			Status:         ANALYSIS_STATUS_PENDING,
+			CurrentStep:    ANALYSIS_STEP_INIT,
+			ProgressText:   "Queued for analysis...",
+			TelegramChatID: chatID,
+			MessageID:      0, // No progress messages for batch analysis
+			StartedAt:      time.Now(),
+		}
+
+		err = t.dbService.CreateAnalysisTask(task)
+		if err != nil {
+			log.Printf("Failed to create analysis task for user %s: %v", user.Username, err)
+			continue
+		}
+
+		// Start analysis in background
+		go t.processAnalysisTask(taskID)
+		analysisCount++
+
+		// Small delay between launches to avoid overwhelming the system
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Send summary
+	summaryMessage := fmt.Sprintf("🚀 <b>Top 20 Analysis Started</b>\n\n📊 <b>Statistics:</b>\n• ✅ Started: %d analyses\n• ⏭️ Skipped: %d (cached)\n• 📋 Total: %d users\n\n🔍 Use /tasks to monitor progress\n💡 Use /fudlist to see detected FUD users", analysisCount, skippedCount, len(users))
+	t.SendMessage(chatID, summaryMessage)
+
+	log.Printf("Started top 20 analysis: %d analyses queued, %d skipped", analysisCount, skippedCount)
+}
+
+func (t *TelegramService) handleBatchAnalyzeCommand(chatID int64, args []string) {
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+		t.SendMessage(chatID, "❌ Invalid command format. Use /batch_analyze <user1,user2,user3>\n\n📝 <b>Examples:</b>\n• <code>/batch_analyze john,mary,bob</code>\n• <code>/batch_analyze user1, user2, user3</code>\n\n💡 Separate usernames with commas")
+		return
+	}
+
+	// Join all arguments and split by comma
+	userListStr := strings.Join(args, " ")
+	usernames := strings.Split(userListStr, ",")
+
+	// Clean and validate usernames
+	var validUsernames []string
+	var invalidUsernames []string
+
+	for _, username := range usernames {
+		username = strings.TrimSpace(username)
+		username = strings.TrimPrefix(username, "@") // Remove @ if present
+
+		if username == "" {
+			continue
+		}
+
+		// Basic validation - check if it looks like a valid username
+		if len(username) > 50 || strings.Contains(username, " ") {
+			invalidUsernames = append(invalidUsernames, username)
+			continue
+		}
+
+		validUsernames = append(validUsernames, username)
+	}
+
+	if len(validUsernames) == 0 {
+		t.SendMessage(chatID, "❌ No valid usernames provided. Please check your input format.")
+		return
+	}
+
+	if len(validUsernames) > 20 {
+		t.SendMessage(chatID, fmt.Sprintf("❌ Too many users requested (%d). Maximum limit is 20 users per batch.", len(validUsernames)))
+		return
+	}
+
+	// Send initial confirmation
+	var confirmationMessage strings.Builder
+	confirmationMessage.WriteString(fmt.Sprintf("🔄 <b>Starting Batch Analysis</b>\n\n📊 <b>Users to analyze (%d):</b>\n", len(validUsernames)))
+
+	for i, username := range validUsernames {
+		confirmationMessage.WriteString(fmt.Sprintf("%d. @%s\n", i+1, username))
+	}
+
+	if len(invalidUsernames) > 0 {
+		confirmationMessage.WriteString(fmt.Sprintf("\n⚠️ <b>Skipped invalid usernames (%d):</b>\n", len(invalidUsernames)))
+		for _, username := range invalidUsernames {
+			confirmationMessage.WriteString(fmt.Sprintf("• %s\n", username))
+		}
+	}
+
+	confirmationMessage.WriteString("\n⏳ Analysis will start shortly...\n💡 Results will be sent as notifications to this chat only")
+
+	t.SendMessage(chatID, confirmationMessage.String())
+
+	// Start analysis for each user
+	analysisCount := 0
+	skippedCount := 0
+
+	for _, username := range validUsernames {
+		// Check if user already has recent cached analysis
+		user, err := t.dbService.GetUserByUsername(username)
+		if err == nil && t.dbService.HasValidCachedAnalysis(user.ID) {
+			log.Printf("Skipping user %s - has valid cached analysis", username)
+			skippedCount++
+
+			// Get cached result and send notification immediately
+			if cachedResult, err := t.dbService.GetCachedAnalysis(user.ID); err == nil {
+				go t.sendCachedBatchNotification(username, user.ID, *cachedResult, chatID)
+			}
+			continue
+		}
+
+		// Generate task ID for tracking
+		taskID := t.generateNotificationID()
+
+		// Create analysis task in database
+		task := &AnalysisTaskModel{
+			ID:             taskID,
+			Username:       username,
+			Status:         ANALYSIS_STATUS_PENDING,
+			CurrentStep:    ANALYSIS_STEP_INIT,
+			ProgressText:   "Queued for batch analysis...",
+			TelegramChatID: chatID,
+			MessageID:      0, // No progress messages for batch analysis
+			StartedAt:      time.Now(),
+		}
+
+		if user != nil {
+			task.UserID = user.ID
+		}
+
+		err = t.dbService.CreateAnalysisTask(task)
+		if err != nil {
+			log.Printf("Failed to create analysis task for user %s: %v", username, err)
+			continue
+		}
+
+		// Start analysis in background with specific chat ID for notifications
+		go t.processBatchAnalysisTask(taskID, chatID)
+		analysisCount++
+
+		// Small delay between launches to avoid overwhelming the system
+		time.Sleep(150 * time.Millisecond)
+	}
+
+	// Send summary
+	summaryMessage := fmt.Sprintf("🚀 <b>Batch Analysis Started</b>\n\n📊 <b>Statistics:</b>\n• ✅ Started: %d analyses\n• ⏭️ Skipped: %d (cached)\n• 📋 Total: %d users\n\n🔔 Results will be sent to this chat as they complete\n🔍 Use /tasks to monitor progress", analysisCount, skippedCount, len(validUsernames))
+	t.SendMessage(chatID, summaryMessage)
+
+	log.Printf("Started batch analysis for chat %d: %d analyses queued, %d skipped", chatID, analysisCount, skippedCount)
+}
+
+// processBatchAnalysisTask processes analysis task for batch analysis with specific chat notifications
+func (t *TelegramService) processBatchAnalysisTask(taskID string, targetChatID int64) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Batch analysis task %s panicked: %v", taskID, r)
+			t.dbService.SetAnalysisTaskError(taskID, fmt.Sprintf("Internal error: %v", r))
+		}
+	}()
+
+	// Get task details
+	task, err := t.dbService.GetAnalysisTask(taskID)
+	if err != nil {
+		log.Printf("Failed to get batch analysis task %s: %v", taskID, err)
+		return
+	}
+
+	username := task.Username
+
+	// Step 1: User lookup
+	t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_USER_LOOKUP, "Looking up user information...")
+	user, err := t.dbService.GetUserByUsername(username)
+	var userID string
+	if err != nil {
+		userID = "unknown_" + username
+		log.Printf("User %s not found in database, using placeholder ID", username)
+	} else {
+		userID = user.ID
+		// Update task with found user ID
+		task.UserID = userID
+		t.dbService.UpdateAnalysisTask(task)
+	}
+
+	// Step 2: Get user tweet for analysis context
+	t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_TICKER_SEARCH, "Searching for user's ticker mentions...")
+	tweet, err := t.dbService.GetUserTweetForAnalysis(username)
+
+	var newMessage twitterapi.NewMessage
+
+	if err != nil {
+		log.Printf("No tweet found for %s, creating placeholder data", username)
+
+		newMessage = twitterapi.NewMessage{
+			TweetID:      "batch_analysis_" + username,
+			ReplyTweetID: "",
+			Author: struct {
+				UserName string
+				Name     string
+				ID       string
+			}{
+				UserName: username,
+				Name:     username,
+				ID:       userID,
+			},
+			Text:      "Batch analysis request - no recent tweets found",
+			CreatedAt: time.Now().Format(time.RFC3339),
+			ParentTweet: struct {
+				ID     string
+				Author string
+				Text   string
+			}{
+				ID:     "placeholder_parent",
+				Author: "system",
+				Text:   "No parent tweet available - batch analysis",
+			},
+			GrandParentTweet: struct {
+				ID     string
+				Author string
+				Text   string
+			}{
+				ID:     "",
+				Author: "",
+				Text:   "",
+			},
+			IsManualAnalysis:  true,
+			ForceNotification: true,
+			TaskID:            taskID,
+			TelegramChatID:    targetChatID, // Set specific chat for notifications
+		}
+	} else {
+		newMessage = twitterapi.NewMessage{
+			TweetID:      tweet.ID,
+			ReplyTweetID: tweet.InReplyToID,
+			Author: struct {
+				UserName string
+				Name     string
+				ID       string
+			}{
+				UserName: username,
+				Name:     username,
+				ID:       tweet.UserID,
+			},
+			Text:      tweet.Text,
+			CreatedAt: tweet.CreatedAt.Format(time.RFC3339),
+			ParentTweet: struct {
+				ID     string
+				Author string
+				Text   string
+			}{
+				ID:     "batch_parent",
+				Author: "system",
+				Text:   "Batch analysis - limited context available",
+			},
+			GrandParentTweet: struct {
+				ID     string
+				Author string
+				Text   string
+			}{
+				ID:     "",
+				Author: "",
+				Text:   "",
+			},
+			IsManualAnalysis:  true,
+			ForceNotification: true,
+			TaskID:            taskID,
+			TelegramChatID:    targetChatID, // Set specific chat for notifications
+		}
+	}
+
+	// Send to analysis channel for processing
+	t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_CLAUDE_ANALYSIS, "Starting AI analysis...")
+	t.analysisChannel <- newMessage
+
+	log.Printf("Sent batch analysis request for user %s (task %s) to analysis channel", username, taskID)
+}
+
+// sendCachedBatchNotification sends cached result as notification to specific chat
+func (t *TelegramService) sendCachedBatchNotification(username, userID string, cachedResult SecondStepClaudeResponse, targetChatID int64) {
+	// Create a formatted message for cached result
+	alertType := cachedResult.FUDType
+	if !cachedResult.IsFUDUser {
+		alertType = "clean_user"
+	}
+
+	severityEmoji := "✅"
+	if cachedResult.IsFUDUser {
+		switch cachedResult.UserRiskLevel {
+		case "critical":
+			severityEmoji = "🚨🔥"
+		case "high":
+			severityEmoji = "🚨"
+		case "medium":
+			severityEmoji = "⚠️"
+		default:
+			severityEmoji = "ℹ️"
+		}
+	}
+
+	message := fmt.Sprintf(`%s <b>Batch Analysis Result (Cached)</b>
+
+👤 <b>User:</b> @%s
+📊 <b>Status:</b> %s
+🎯 <b>Type:</b> %s
+📈 <b>Confidence:</b> %.0f%%
+👥 <b>Profile:</b> %s
+
+💾 <b>Source:</b> Cached analysis (< 24h)
+🔍 <b>Commands:</b> /history_%s | /analyze %s`,
+		severityEmoji,
+		username,
+		map[bool]string{true: "FUD User Detected", false: "Clean User"}[cachedResult.IsFUDUser],
+		alertType,
+		cachedResult.FUDProbability*100,
+		cachedResult.UserSummary,
+		username, username)
+
+	err := t.SendMessage(targetChatID, message)
+	if err != nil {
+		log.Printf("Failed to send cached batch notification for %s to chat %d: %v", username, targetChatID, err)
+	} else {
+		log.Printf("Sent cached batch analysis result for %s to chat %d", username, targetChatID)
+	}
 }

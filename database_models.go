@@ -144,3 +144,25 @@ const (
 	ANALYSIS_STEP_SAVING_RESULTS     = "saving_results"
 	ANALYSIS_STEP_COMPLETED          = "completed"
 )
+
+// CachedAnalysis model for storing analysis results with expiration
+type CachedAnalysisModel struct {
+	gorm.Model
+	UserID         string    `gorm:"column:user_id;uniqueIndex" json:"user_id"`
+	Username       string    `gorm:"column:username;index" json:"username"`
+	IsFUDUser      bool      `gorm:"column:is_fud_user" json:"is_fud_user"`
+	FUDType        string    `gorm:"column:fud_type" json:"fud_type"`
+	FUDProbability float64   `gorm:"column:fud_probability" json:"fud_probability"`
+	UserRiskLevel  string    `gorm:"column:user_risk_level" json:"user_risk_level"`
+	UserSummary    string    `gorm:"column:user_summary" json:"user_summary"`
+	KeyEvidence    string    `gorm:"column:key_evidence" json:"key_evidence"` // JSON array as string
+	DecisionReason string    `gorm:"column:decision_reason" json:"decision_reason"`
+	AnalyzedAt     time.Time `gorm:"column:analyzed_at;index" json:"analyzed_at"`
+	ExpiresAt      time.Time `gorm:"column:expires_at;index" json:"expires_at"`
+	CreatedAt      time.Time `gorm:"column:created_at" json:"created_at"`
+	UpdatedAt      time.Time `gorm:"column:updated_at" json:"updated_at"`
+}
+
+func (CachedAnalysisModel) TableName() string {
+	return "cached_analysis"
+}

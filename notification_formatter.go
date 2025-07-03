@@ -30,6 +30,8 @@ type FUDAlertNotification struct {
 	GrandParentPostText   string `json:"grandparent_post_text"`
 	GrandParentPostAuthor string `json:"grandparent_post_author"`
 	HasThreadContext      bool   `json:"has_thread_context"`
+	// Target chat for notification (optional)
+	TargetChatID int64 `json:"target_chat_id,omitempty"` // If set, send only to this chat
 }
 
 func NewNotificationFormatter() *NotificationFormatter {

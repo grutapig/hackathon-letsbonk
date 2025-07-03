@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
+	err := godotenv.Load(".dev.dark.env")
 	panicErr(err)
 	api := twitterapi.NewTwitterAPIService(os.Getenv(twitterapi.ENV_TWITTER_API_KEY), os.Getenv(twitterapi.ENV_TWITTER_API_BASE_URL), os.Getenv(twitterapi.ENV_PROXY_DSN))
 
@@ -227,7 +227,7 @@ func writeTweetToCSV(writer *csv.Writer, tweet twitterapi.Tweet, replyToTweetID 
 
 	err := writer.Write(record)
 	if err == nil {
-		fmt.Printf("    ✏️  Wrote tweet @%s: \"%s\"\n", tweet.Author.UserName, logText)
+		fmt.Printf("    ✏️  Wrote tweet @%s: %s \"%s\"\n", tweet.Author.UserName, tweet.CreatedAt, logText)
 	}
 
 	return err

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/driver/sqlite"
@@ -36,7 +38,7 @@ func NewDatabaseService(dbPath string) (*DatabaseService, error) {
 
 // runMigrations runs database migrations
 func (s *DatabaseService) runMigrations() error {
-	return s.db.AutoMigrate(&TweetModel{}, &UserModel{}, &FUDUserModel{}, &UserRelationModel{}, &AnalysisTaskModel{})
+	return s.db.AutoMigrate(&TweetModel{}, &UserModel{}, &FUDUserModel{}, &UserRelationModel{}, &AnalysisTaskModel{}, &CachedAnalysisModel{})
 }
 
 // Tweet related methods
@@ -126,10 +128,10 @@ func (s *DatabaseService) GetUser(id string) (*UserModel, error) {
 	return &user, nil
 }
 
-// GetUserByUsername retrieves a user by username from the database
+// GetUserByUsername retrieves a user by username from the database (case insensitive)
 func (s *DatabaseService) GetUserByUsername(username string) (*UserModel, error) {
 	var user UserModel
-	err := s.db.Where("username = ?", username).First(&user).Error
+	err := s.db.Where("LOWER(username) = ?", strings.ToLower(username)).First(&user).Error
 	if err != nil {
 		return nil, err
 	}
@@ -143,10 +145,10 @@ func (s *DatabaseService) UserExists(id string) bool {
 	return count > 0
 }
 
-// UserExistsByUsername checks if a user exists by username in the database
+// UserExistsByUsername checks if a user exists by username in the database (case insensitive)
 func (s *DatabaseService) UserExistsByUsername(username string) bool {
 	var count int64
-	s.db.Model(&UserModel{}).Where("username = ?", username).Count(&count)
+	s.db.Model(&UserModel{}).Where("LOWER(username) = ?", strings.ToLower(username)).Count(&count)
 	return count > 0
 }
 
@@ -439,7 +441,7 @@ func (s *DatabaseService) GetUserMessagesWithContext(userID string, limit int) (
 	return tweets, err
 }
 
-// GetUserMessagesByUsername retrieves user messages by username with thread context
+// GetUserMessagesByUsername retrieves user messages by username with thread context (case insensitive)
 func (s *DatabaseService) GetUserMessagesByUsername(username string, limit int) ([]TweetModel, error) {
 	// First find user by username to get ID
 	user, err := s.GetUserByUsername(username)
@@ -449,9 +451,9 @@ func (s *DatabaseService) GetUserMessagesByUsername(username string, limit int) 
 		err := s.db.Raw(`
 			SELECT DISTINCT t.* FROM tweets t 
 			JOIN users u ON t.user_id = u.id 
-			WHERE u.username = ? 
+			WHERE LOWER(u.username) = ? 
 			ORDER BY t.created_at DESC 
-			LIMIT ?`, username, limit).Find(&tweets).Error
+			LIMIT ?`, strings.ToLower(username), limit).Find(&tweets).Error
 		return tweets, err
 	}
 
@@ -465,7 +467,7 @@ func (s *DatabaseService) GetAllUserMessages(userID string) ([]TweetModel, error
 	return tweets, err
 }
 
-// GetAllUserMessagesByUsername retrieves all messages for a user by username (for full export)
+// GetAllUserMessagesByUsername retrieves all messages for a user by username (for full export, case insensitive)
 func (s *DatabaseService) GetAllUserMessagesByUsername(username string) ([]TweetModel, error) {
 	user, err := s.GetUserByUsername(username)
 	if err != nil {
@@ -474,8 +476,8 @@ func (s *DatabaseService) GetAllUserMessagesByUsername(username string) ([]Tweet
 		err := s.db.Raw(`
 			SELECT DISTINCT t.* FROM tweets t 
 			JOIN users u ON t.user_id = u.id 
-			WHERE u.username = ? 
-			ORDER BY t.created_at DESC`, username).Find(&tweets).Error
+			WHERE LOWER(u.username) = ? 
+			ORDER BY t.created_at DESC`, strings.ToLower(username)).Find(&tweets).Error
 		return tweets, err
 	}
 
@@ -505,12 +507,13 @@ func (s *DatabaseService) GetTopActiveUsers(limit int) ([]UserModel, error) {
 // SearchUsers searches for users by username substring (case-insensitive)
 func (s *DatabaseService) SearchUsers(query string, limit int) ([]UserModel, error) {
 	var users []UserModel
-	err := s.db.Where("username LIKE ? OR name LIKE ?", "%"+query+"%", "%"+query+"%").
+	queryLower := strings.ToLower(query)
+	err := s.db.Where("LOWER(username) LIKE ? OR LOWER(name) LIKE ?", "%"+queryLower+"%", "%"+queryLower+"%").
 		Order("username ASC").Limit(limit).Find(&users).Error
 	return users, err
 }
 
-// GetUserTweetForAnalysis gets a recent tweet from user for second step analysis
+// GetUserTweetForAnalysis gets a recent tweet from user for second step analysis (case insensitive)
 func (s *DatabaseService) GetUserTweetForAnalysis(username string) (*TweetModel, error) {
 	var tweet TweetModel
 
@@ -521,9 +524,9 @@ func (s *DatabaseService) GetUserTweetForAnalysis(username string) (*TweetModel,
 		err := s.db.Raw(`
 			SELECT t.* FROM tweets t 
 			JOIN users u ON t.user_id = u.id 
-			WHERE u.username = ? 
+			WHERE LOWER(u.username) = ? 
 			ORDER BY t.created_at DESC 
-			LIMIT 1`, username).First(&tweet).Error
+			LIMIT 1`, strings.ToLower(username)).First(&tweet).Error
 		return &tweet, err
 	}
 
@@ -596,6 +599,14 @@ func (s *DatabaseService) GetRunningAnalysisTasks() ([]AnalysisTaskModel, error)
 	return tasks, err
 }
 
+// GetAllRunningAnalysisTasks gets all pending and running analysis tasks
+func (s *DatabaseService) GetAllRunningAnalysisTasks() ([]AnalysisTaskModel, error) {
+	var tasks []AnalysisTaskModel
+	err := s.db.Where("status IN ?", []string{ANALYSIS_STATUS_PENDING, ANALYSIS_STATUS_RUNNING}).
+		Order("created_at DESC").Find(&tasks).Error
+	return tasks, err
+}
+
 // ClearAllAnalysisFlags clears all FUD flags and analysis status for fresh start
 func (s *DatabaseService) ClearAllAnalysisFlags() error {
 	tx := s.db.Begin()
@@ -656,6 +667,133 @@ func (s *DatabaseService) GetAnalysisStats() (map[string]interface{}, error) {
 	stats["running_tasks"] = runningTasks
 
 	return stats, nil
+}
+
+// Cached Analysis Methods
+
+// SaveCachedAnalysis saves analysis result to cache with 24-hour expiration
+func (s *DatabaseService) SaveCachedAnalysis(userID, username string, analysis SecondStepClaudeResponse) error {
+	// Convert key evidence to JSON string
+	keyEvidenceJSON := ""
+	if len(analysis.KeyEvidence) > 0 {
+		if jsonData, err := json.Marshal(analysis.KeyEvidence); err == nil {
+			keyEvidenceJSON = string(jsonData)
+		}
+	}
+
+	cached := CachedAnalysisModel{
+		UserID:         userID,
+		Username:       username,
+		IsFUDUser:      analysis.IsFUDUser,
+		FUDType:        analysis.FUDType,
+		FUDProbability: analysis.FUDProbability,
+		UserRiskLevel:  analysis.UserRiskLevel,
+		UserSummary:    analysis.UserSummary,
+		KeyEvidence:    keyEvidenceJSON,
+		DecisionReason: analysis.DecisionReason,
+		AnalyzedAt:     time.Now(),
+		ExpiresAt:      time.Now().Add(24 * time.Hour), // 1 day expiration
+	}
+
+	return s.db.Save(&cached).Error
+}
+
+// GetCachedAnalysis retrieves cached analysis if not expired
+func (s *DatabaseService) GetCachedAnalysis(userID string) (*SecondStepClaudeResponse, error) {
+	var cached CachedAnalysisModel
+	err := s.db.Where("user_id = ? AND expires_at > ?", userID, time.Now()).First(&cached).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse key evidence from JSON
+	var keyEvidence []string
+	if cached.KeyEvidence != "" {
+		json.Unmarshal([]byte(cached.KeyEvidence), &keyEvidence)
+	}
+
+	result := &SecondStepClaudeResponse{
+		IsFUDUser:      cached.IsFUDUser,
+		FUDType:        cached.FUDType,
+		FUDProbability: cached.FUDProbability,
+		UserRiskLevel:  cached.UserRiskLevel,
+		UserSummary:    cached.UserSummary,
+		KeyEvidence:    keyEvidence,
+		DecisionReason: cached.DecisionReason,
+	}
+
+	return result, nil
+}
+
+// HasValidCachedAnalysis checks if user has valid cached analysis
+func (s *DatabaseService) HasValidCachedAnalysis(userID string) bool {
+	var count int64
+	s.db.Model(&CachedAnalysisModel{}).Where("user_id = ? AND expires_at > ?", userID, time.Now()).Count(&count)
+	return count > 0
+}
+
+// CleanExpiredCache removes expired cached analysis entries
+func (s *DatabaseService) CleanExpiredCache() error {
+	return s.db.Where("expires_at < ?", time.Now()).Delete(&CachedAnalysisModel{}).Error
+}
+
+// GetAllFUDUsersFromCache gets all FUD users from both active FUD table and cache
+func (s *DatabaseService) GetAllFUDUsersFromCache() ([]map[string]interface{}, error) {
+	var results []map[string]interface{}
+
+	// Get from active FUD users table
+	var fudUsers []FUDUserModel
+	err := s.db.Order("detected_at DESC").Find(&fudUsers).Error
+	if err != nil {
+		return nil, err
+	}
+
+	for _, user := range fudUsers {
+		results = append(results, map[string]interface{}{
+			"user_id":         user.UserID,
+			"username":        user.Username,
+			"fud_type":        user.FUDType,
+			"fud_probability": user.FUDProbability,
+			"detected_at":     user.DetectedAt,
+			"message_count":   user.MessageCount,
+			"last_message_id": user.LastMessageID,
+			"source":          "active",
+		})
+	}
+
+	// Get from cached analysis (FUD users only)
+	var cachedFUD []CachedAnalysisModel
+	err = s.db.Where("is_fud_user = ? AND expires_at > ?", true, time.Now()).
+		Order("analyzed_at DESC").Find(&cachedFUD).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Create map to avoid duplicates
+	seenUsers := make(map[string]bool)
+	for _, user := range fudUsers {
+		seenUsers[user.UserID] = true
+	}
+
+	for _, cached := range cachedFUD {
+		if !seenUsers[cached.UserID] {
+			results = append(results, map[string]interface{}{
+				"user_id":         cached.UserID,
+				"username":        cached.Username,
+				"fud_type":        cached.FUDType,
+				"fud_probability": cached.FUDProbability,
+				"detected_at":     cached.AnalyzedAt,
+				"message_count":   0,
+				"last_message_id": "",
+				"source":          "cached",
+				"user_summary":    cached.UserSummary,
+				"expires_at":      cached.ExpiresAt,
+			})
+			seenUsers[cached.UserID] = true
+		}
+	}
+
+	return results, nil
 }
 
 // Close closes the database connection

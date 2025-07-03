@@ -9,6 +9,34 @@ import (
 )
 
 func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUDAlertNotification, twitterApi *twitterapi.TwitterAPIService, claudeApi *ClaudeApi, systemPromptSecondStep []byte, userStatusManager *UserStatusManager, ticker string, dbService *DatabaseService) {
+	// Check if we have cached analysis first (for non-manual analysis)
+	if !newMessage.IsManualAnalysis {
+		if cachedResult, err := dbService.GetCachedAnalysis(newMessage.Author.ID); err == nil {
+			log.Printf("Using cached analysis for user %s", newMessage.Author.UserName)
+
+			// Use cached result instead of running full analysis
+			aiDecision2 := *cachedResult
+
+			// Update user status with cached result
+			userStatusManager.UpdateUserAfterAnalysis(newMessage.Author.ID, newMessage.Author.UserName, aiDecision2, newMessage.TweetID)
+
+			// Send notification if needed
+			if aiDecision2.IsFUDUser || newMessage.ForceNotification {
+				sendCachedNotification(newMessage, aiDecision2, notificationCh, dbService)
+			}
+
+			// Mark user as analyzed
+			dbService.MarkUserAsDetailAnalyzed(newMessage.Author.ID)
+
+			// Complete manual analysis task if this was a manual analysis
+			if newMessage.IsManualAnalysis && newMessage.TaskID != "" {
+				completeManualAnalysisTask(newMessage, aiDecision2, dbService)
+			}
+
+			return
+		}
+	}
+
 	// Get user's ticker mentions using advanced search (max 3 pages)
 	userTickerMentions := getUserTickerMentions(twitterApi, newMessage.Author.UserName, ticker, dbService)
 
@@ -203,8 +231,17 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 			GrandParentPostText:   grandParentPostText,
 			GrandParentPostAuthor: grandParentPostAuthor,
 			HasThreadContext:      hasThreadContext,
+			TargetChatID:          newMessage.TelegramChatID, // Set target chat if specified
 		}
 		notificationCh <- alert
+	}
+
+	// Save analysis result to cache (24-hour expiration)
+	err = dbService.SaveCachedAnalysis(newMessage.Author.ID, newMessage.Author.UserName, aiDecision2)
+	if err != nil {
+		log.Printf("Failed to save cached analysis for user %s: %v", newMessage.Author.UserName, err)
+	} else {
+		log.Printf("Saved cached analysis for user %s", newMessage.Author.UserName)
 	}
 
 	// Mark user as having been through detailed analysis
@@ -217,19 +254,7 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 
 	// Complete manual analysis task if this was a manual analysis
 	if newMessage.IsManualAnalysis && newMessage.TaskID != "" {
-		// Update progress to saving results
-		dbService.UpdateAnalysisTaskProgress(newMessage.TaskID, ANALYSIS_STEP_SAVING_RESULTS, "Analysis completed, saving results...")
-
-		// Complete the task with analysis results
-		resultData := fmt.Sprintf(`{"analysis_complete": true, "is_fud": %t, "fud_type": "%s", "user_summary": "%s", "timestamp": "%s"}`,
-			aiDecision2.IsFUDUser, aiDecision2.FUDType, aiDecision2.UserSummary, time.Now().Format(time.RFC3339))
-
-		err = dbService.CompleteAnalysisTask(newMessage.TaskID, resultData)
-		if err != nil {
-			log.Printf("Failed to complete analysis task %s: %v", newMessage.TaskID, err)
-		} else {
-			log.Printf("Completed manual analysis task %s for user %s", newMessage.TaskID, newMessage.Author.UserName)
-		}
+		completeManualAnalysisTask(newMessage, aiDecision2, dbService)
 	}
 }
 
@@ -255,5 +280,119 @@ func getRecommendedAction(decision SecondStepClaudeResponse) string {
 		return "MONITOR_CLOSELY"
 	} else {
 		return "STANDARD_MONITORING"
+	}
+}
+
+// sendCachedNotification sends notification using cached analysis result
+func sendCachedNotification(newMessage twitterapi.NewMessage, aiDecision2 SecondStepClaudeResponse, notificationCh chan FUDAlertNotification, dbService *DatabaseService) {
+	// Determine thread context from newMessage
+	originalPostText := ""
+	originalPostAuthor := ""
+	parentPostText := ""
+	parentPostAuthor := ""
+	grandParentPostText := ""
+	grandParentPostAuthor := ""
+	hasThreadContext := false
+
+	// Set thread context based on available data
+	if newMessage.GrandParentTweet.ID != "" {
+		grandParentPostText = newMessage.GrandParentTweet.Text
+		grandParentPostAuthor = newMessage.GrandParentTweet.Author
+		parentPostText = newMessage.ParentTweet.Text
+		parentPostAuthor = newMessage.ParentTweet.Author
+		originalPostText = newMessage.GrandParentTweet.Text
+		originalPostAuthor = newMessage.GrandParentTweet.Author
+		hasThreadContext = true
+	} else if newMessage.ParentTweet.ID != "" {
+		parentPostText = newMessage.ParentTweet.Text
+		parentPostAuthor = newMessage.ParentTweet.Author
+		originalPostText = newMessage.ParentTweet.Text
+		originalPostAuthor = newMessage.ParentTweet.Author
+		hasThreadContext = true
+	}
+
+	// Store FUD user in database only if actually detected as FUD
+	if aiDecision2.IsFUDUser {
+		fudUser := FUDUserModel{
+			UserID:         newMessage.Author.ID,
+			Username:       newMessage.Author.UserName,
+			FUDType:        aiDecision2.FUDType,
+			FUDProbability: aiDecision2.FUDProbability,
+			DetectedAt:     time.Now(),
+			MessageCount:   1,
+			LastMessageID:  newMessage.TweetID,
+		}
+
+		// Check if FUD user already exists
+		if dbService.IsFUDUser(newMessage.Author.ID) {
+			// Increment message count for existing FUD user
+			err := dbService.IncrementFUDUserMessageCount(newMessage.Author.ID, newMessage.TweetID)
+			if err != nil {
+				log.Printf("Failed to increment FUD user message count: %v", err)
+			}
+		} else {
+			// Save new FUD user
+			err := dbService.SaveFUDUser(fudUser)
+			if err != nil {
+				log.Printf("Failed to save FUD user: %v", err)
+			} else {
+				log.Printf("Stored new FUD user: %s", newMessage.Author.UserName)
+			}
+		}
+	}
+
+	// Create alert notification
+	alertType := aiDecision2.FUDType
+	alertSeverity := mapRiskLevelToSeverity(aiDecision2.UserRiskLevel)
+
+	if newMessage.IsManualAnalysis {
+		if !aiDecision2.IsFUDUser {
+			alertType = "manual_analysis_clean"
+			alertSeverity = "low"
+		} else {
+			alertType = "manual_analysis_fud"
+		}
+	}
+
+	alert := FUDAlertNotification{
+		FUDMessageID:          newMessage.TweetID,
+		FUDUserID:             newMessage.Author.ID,
+		FUDUsername:           newMessage.Author.UserName,
+		ThreadID:              newMessage.ReplyTweetID,
+		DetectedAt:            time.Now().Format(time.RFC3339),
+		AlertSeverity:         alertSeverity,
+		FUDType:               alertType,
+		FUDProbability:        aiDecision2.FUDProbability,
+		MessagePreview:        newMessage.Text,
+		RecommendedAction:     getRecommendedAction(aiDecision2),
+		KeyEvidence:           aiDecision2.KeyEvidence,
+		DecisionReason:        aiDecision2.DecisionReason,
+		UserSummary:           aiDecision2.UserSummary,
+		OriginalPostText:      originalPostText,
+		OriginalPostAuthor:    originalPostAuthor,
+		ParentPostText:        parentPostText,
+		ParentPostAuthor:      parentPostAuthor,
+		GrandParentPostText:   grandParentPostText,
+		GrandParentPostAuthor: grandParentPostAuthor,
+		HasThreadContext:      hasThreadContext,
+		TargetChatID:          newMessage.TelegramChatID, // Set target chat if specified
+	}
+	notificationCh <- alert
+}
+
+// completeManualAnalysisTask completes manual analysis task with results
+func completeManualAnalysisTask(newMessage twitterapi.NewMessage, aiDecision2 SecondStepClaudeResponse, dbService *DatabaseService) {
+	// Update progress to saving results
+	dbService.UpdateAnalysisTaskProgress(newMessage.TaskID, ANALYSIS_STEP_SAVING_RESULTS, "Analysis completed, saving results...")
+
+	// Complete the task with analysis results
+	resultData := fmt.Sprintf(`{"analysis_complete": true, "is_fud": %t, "fud_type": "%s", "user_summary": "%s", "timestamp": "%s"}`,
+		aiDecision2.IsFUDUser, aiDecision2.FUDType, aiDecision2.UserSummary, time.Now().Format(time.RFC3339))
+
+	err := dbService.CompleteAnalysisTask(newMessage.TaskID, resultData)
+	if err != nil {
+		log.Printf("Failed to complete analysis task %s: %v", newMessage.TaskID, err)
+	} else {
+		log.Printf("Completed manual analysis task %s for user %s", newMessage.TaskID, newMessage.Author.UserName)
 	}
 }

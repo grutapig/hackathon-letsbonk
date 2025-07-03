@@ -57,6 +57,7 @@ type NewMessage struct {
 	IsManualAnalysis  bool
 	ForceNotification bool
 	TaskID            string // For tracking manual analysis progress
+	TelegramChatID    int64  // Optional: if set, send notification only to this chat
 }
 
 const (

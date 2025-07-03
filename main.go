@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/grutapig/hackaton/twitterapi"
 	"github.com/joho/godotenv"
@@ -50,9 +51,48 @@ func initializeData(dbService *DatabaseService, twitterApi *twitterapi.TwitterAP
 }
 
 func main() {
-	err := godotenv.Load(".hosico.env")
-	if err != nil {
-		panic(err)
+	// Parse command line flags
+	configFile := flag.String("config", "", "Configuration file to load (e.g., .env, .dev.env, .prod.env)")
+	showHelp := flag.Bool("help", false, "Show help information")
+	flag.BoolVar(showHelp, "h", false, "Show help information (shorthand)")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "FUD Detection System - Twitter/X Community Monitoring\n\n")
+		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fmt.Fprintf(os.Stderr, "  -config string\n")
+		fmt.Fprintf(os.Stderr, "        Configuration file to load (default: none)\n")
+		fmt.Fprintf(os.Stderr, "        Examples: .env, .dev.env, .prod.env\n")
+		fmt.Fprintf(os.Stderr, "  -help, -h\n")
+		fmt.Fprintf(os.Stderr, "        Show this help information\n\n")
+		fmt.Fprintf(os.Stderr, "Examples:\n")
+		fmt.Fprintf(os.Stderr, "  %s                    # Run with environment variables only\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -config .env       # Run with .env file\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -config .dev.env   # Run with development config\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s -config .prod.env  # Run with production config\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Note: Environment variables will override config file values\n")
+	}
+
+	flag.Parse()
+
+	// Show help if requested
+	if *showHelp {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	// Load configuration file if specified
+	if *configFile != "" {
+		log.Printf("Loading configuration from: %s", *configFile)
+		err := godotenv.Load(*configFile)
+		if err != nil {
+			log.Printf("Warning: Failed to load config file %s: %v", *configFile, err)
+			log.Println("Continuing with environment variables...")
+		} else {
+			log.Printf("Successfully loaded configuration from %s", *configFile)
+		}
+	} else {
+		log.Println("No config file specified, using environment variables only")
 	}
 	claudeApi, err := NewClaudeClient(os.Getenv(ENV_CLAUDE_API_KEY), os.Getenv(ENV_PROXY_CLAUDE_DSN), CLAUDE_MODEL)
 	if err != nil {
@@ -77,9 +117,29 @@ func main() {
 	defer dbService.Close()
 	log.Println("Database service initialized successfully")
 
-	fudChannel := make(chan twitterapi.NewMessage, 10)
+	// Check if we need to clear analysis flags on startup
+	if os.Getenv(ENV_CLEAR_ANALYSIS_ON_START) == "true" {
+		log.Println("Clearing all analysis flags on startup...")
+		err = dbService.ClearAllAnalysisFlags()
+		if err != nil {
+			log.Printf("Warning: Failed to clear analysis flags: %v", err)
+		} else {
+			log.Println("Successfully cleared all analysis flags")
+		}
+	}
 
-	telegramService, err := NewTelegramService(os.Getenv(ENV_TELEGRAM_API_KEY), os.Getenv(ENV_PROXY_DSN), os.Getenv(ENV_TELEGRAM_ADMIN_CHAT_ID), notificationFormatter, dbService, fudChannel)
+	// Initialize notification users manager
+	notificationUsers := NewNotificationUsersManager("notification_users.txt")
+	err = notificationUsers.LoadUsers(os.Getenv(ENV_NOTIFICATION_USERS))
+	if err != nil {
+		log.Printf("Warning: Failed to load notification users: %v", err)
+	} else {
+		log.Printf("Loaded %d notification users", notificationUsers.GetUserCount())
+	}
+
+	fudChannel := make(chan twitterapi.NewMessage, 30)
+
+	telegramService, err := NewTelegramService(os.Getenv(ENV_TELEGRAM_API_KEY), os.Getenv(ENV_PROXY_DSN), os.Getenv(ENV_TELEGRAM_ADMIN_CHAT_ID), notificationFormatter, dbService, fudChannel, notificationUsers)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to initialize telegram service: %v", err))
 	}
@@ -106,7 +166,7 @@ func main() {
 	//init channels
 	newMessageCh := make(chan twitterapi.NewMessage, 10)
 	//notification channel
-	notificationCh := make(chan FUDAlertNotification, 10)
+	notificationCh := make(chan FUDAlertNotification, 30)
 
 	//start monitoring for new messages in community
 	wg := sync.WaitGroup{}
@@ -122,16 +182,17 @@ func main() {
 		FirstStepHandler(newMessageCh, fudChannel, claudeApi, systemPromptFirstStep, userStatusManager, dbService, notificationCh)
 	}()
 	//handle fud messages with dynamic routing
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(notificationCh)
+	for i := 1; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 
-		for newMessage := range fudChannel {
-			log.Printf("Second step processing for user %s", newMessage.Author.UserName)
-			SecondStepHandler(newMessage, notificationCh, twitterApi, claudeApi, systemPromptSecondStep, userStatusManager, ticker, dbService)
-		}
-	}()
+			for newMessage := range fudChannel {
+				log.Printf("Second step processing for user %s", newMessage.Author.UserName)
+				SecondStepHandler(newMessage, notificationCh, twitterApi, claudeApi, systemPromptSecondStep, userStatusManager, ticker, dbService)
+			}
+		}()
+	}
 	//notification handler
 	wg.Add(1)
 	go func() {
