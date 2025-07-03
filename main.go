@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 )
 
 const ENV_PROD_CONFIG = ".env"
@@ -339,6 +340,26 @@ func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username st
 			searchQuery := fmt.Sprintf("%s from:%s", ticker, username)
 			storeTweetAndUserWithSource(dbService, tweet, TWEET_SOURCE_TICKER_SEARCH, ticker, searchQuery)
 
+			// Save ticker opinion if not already exists
+			if !dbService.TickerOpinionExists(tweet.Id) {
+				tweetCreatedAt, _ := time.Parse(time.RFC3339, tweet.CreatedAt)
+				opinion := UserTickerOpinionModel{
+					UserID:         tweet.Author.Id,
+					Username:       tweet.Author.UserName,
+					Ticker:         ticker,
+					TweetID:        tweet.Id,
+					Text:           tweet.Text,
+					TweetCreatedAt: tweetCreatedAt,
+					InReplyToID:    tweet.InReplyToId,
+					SearchQuery:    searchQuery,
+				}
+
+				err := dbService.SaveUserTickerOpinion(opinion)
+				if err != nil {
+					log.Printf("Failed to save ticker opinion for tweet %s: %v", tweet.Id, err)
+				}
+			}
+
 			userMessage := UserMessageWithReplies{
 				TweetID:     tweet.Id,
 				CreatedAt:   tweet.CreatedAt,
@@ -379,11 +400,20 @@ func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username st
 				}
 			}
 
-			// Associate replies with user messages
+			// Associate replies with user messages and update ticker opinions
 			for i := range userMessages {
 				if userMessages[i].InReplyToID != "" {
 					if reply, exists := replyMap[userMessages[i].InReplyToID]; exists {
 						userMessages[i].RepliedTo = &reply
+
+						// Update ticker opinion with replied-to context
+						opinion := UserTickerOpinionModel{}
+						result := dbService.db.Where("tweet_id = ?", userMessages[i].TweetID).First(&opinion)
+						if result.Error == nil {
+							opinion.RepliedToText = reply.Text
+							opinion.RepliedToAuthor = reply.Author
+							dbService.SaveUserTickerOpinion(opinion)
+						}
 					}
 				}
 			}

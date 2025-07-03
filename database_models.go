@@ -166,3 +166,25 @@ type CachedAnalysisModel struct {
 func (CachedAnalysisModel) TableName() string {
 	return "cached_analysis"
 }
+
+// UserTickerOpinion model for storing user's ticker-related messages from advanced search
+type UserTickerOpinionModel struct {
+	gorm.Model
+	UserID          string    `gorm:"column:user_id;index" json:"user_id"`
+	Username        string    `gorm:"column:username;index" json:"username"`
+	Ticker          string    `gorm:"column:ticker;index" json:"ticker"`
+	TweetID         string    `gorm:"column:tweet_id;uniqueIndex" json:"tweet_id"`
+	Text            string    `gorm:"column:text" json:"text"`
+	TweetCreatedAt  time.Time `gorm:"column:tweet_created_at;index" json:"tweet_created_at"`
+	InReplyToID     string    `gorm:"column:in_reply_to_id" json:"in_reply_to_id,omitempty"`
+	RepliedToText   string    `gorm:"column:replied_to_text" json:"replied_to_text,omitempty"`
+	RepliedToAuthor string    `gorm:"column:replied_to_author" json:"replied_to_author,omitempty"`
+	SearchQuery     string    `gorm:"column:search_query" json:"search_query"`
+	FoundAt         time.Time `gorm:"column:found_at;index" json:"found_at"`
+	CreatedAt       time.Time `gorm:"column:created_at" json:"created_at"`
+	UpdatedAt       time.Time `gorm:"column:updated_at" json:"updated_at"`
+}
+
+func (UserTickerOpinionModel) TableName() string {
+	return "user_ticker_opinions"
+}

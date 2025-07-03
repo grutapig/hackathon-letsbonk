@@ -90,11 +90,11 @@ func TestTwitterAPIService_GetUserFollowings(t *testing.T) {
 	}
 }
 func TestTwitterAPIService_AdvancedSearch(t *testing.T) {
-	godotenv.Load("../.env")
+	godotenv.Load("../.dev.dark.env")
 
 	api := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
 	advancedSearchResponse, err := api.AdvancedSearch(AdvancedSearchRequest{
-		Query:     fmt.Sprintf("conversation_id:" + os.Getenv(ENV_DEMO_TWEET_ID)),
+		Query:     fmt.Sprintf("$DARK from:swzvs567"),
 		QueryType: LATEST,
 		Cursor:    "",
 	})

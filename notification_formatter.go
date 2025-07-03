@@ -101,6 +101,7 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 
 🔍 <b>Investigation:</b>
 • /history_%s - View recent messages
+• /ticker_history_%s - View ticker posts
 • /export_%s - Export full history
 
 ⏰ <b>Detected:</b> %s
@@ -114,7 +115,7 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 		contextSection,
 		alert.FUDUsername, alert.FUDMessageID,
 		alert.ThreadID,
-		alert.FUDUsername, alert.FUDUsername,
+		alert.FUDUsername, alert.FUDUsername, alert.FUDUsername,
 		nf.formatTime(alert.DetectedAt),
 		alert.FUDUserID, alert.FUDMessageID)
 
@@ -153,7 +154,8 @@ func (nf *NotificationFormatter) FormatForTelegramWithDetail(alert FUDAlertNotif
 
 🔍 <b>Investigation Commands:</b>
 • /detail_%s - Detailed analysis
-• /history_%s - View recent messages  
+• /history_%s - View recent messages
+• /ticker_history_%s - View ticker posts
 • /export_%s - Export full history
 
 ⏰ <b>Detected:</b> %s`,
@@ -165,7 +167,7 @@ func (nf *NotificationFormatter) FormatForTelegramWithDetail(alert FUDAlertNotif
 		nf.truncateText(alert.MessagePreview, 120),
 		alert.FUDUsername, alert.FUDMessageID,
 		alert.ThreadID,
-		notificationID, alert.FUDUsername, alert.FUDUsername,
+		notificationID, alert.FUDUsername, alert.FUDUsername, alert.FUDUsername,
 		nf.formatTime(alert.DetectedAt))
 
 	return message
@@ -268,6 +270,7 @@ func (nf *NotificationFormatter) FormatDetailedView(alert FUDAlertNotification) 
 
 🕵️ <b>INVESTIGATION COMMANDS</b>
 • /history_%s - View recent messages
+• /ticker_history_%s - View ticker posts
 • /export_%s - Export full history
 
 📅 <b>DETECTION METADATA</b>
@@ -285,7 +288,7 @@ User ID: %s`,
 		alert.FUDUsername, alert.FUDMessageID,
 		alert.ThreadID,
 		alert.FUDUsername,
-		alert.FUDUsername, alert.FUDUsername,
+		alert.FUDUsername, alert.FUDUsername, alert.FUDUsername,
 		nf.formatTime(alert.DetectedAt),
 		alert.FUDMessageID,
 		alert.ThreadID,

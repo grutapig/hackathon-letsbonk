@@ -231,6 +231,8 @@ func (t *TelegramService) processUpdates() error {
 				go t.handleHistoryCommand(chatID, text)
 			case strings.HasPrefix(command, "/export_"):
 				go t.handleExportCommand(chatID, text)
+			case strings.HasPrefix(command, "/ticker_history_"):
+				go t.handleTickerHistoryCommand(chatID, text)
 			case command == "/analyze":
 				go t.handleAnalyzeCommand(chatID, args)
 			case command == "/search":
@@ -566,6 +568,55 @@ func (t *TelegramService) handleHistoryCommand(chatID int64, command string) {
 	t.SendMessage(chatID, historyMessage.String())
 }
 
+func (t *TelegramService) handleTickerHistoryCommand(chatID int64, command string) {
+	// Extract username from command "/ticker_history_username"
+	parts := strings.Split(command, "_")
+	if len(parts) != 3 {
+		t.SendMessage(chatID, "❌ Invalid command format. Use /ticker_history_<username>")
+		return
+	}
+
+	username := parts[2]
+	ticker := t.ticker // Use the ticker from the environment
+
+	// Get ticker-related messages for the user
+	opinions, err := t.dbService.GetUserTickerOpinionsByUsername(username, ticker, 20)
+	if err != nil {
+		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving ticker history for @%s: %v", username, err))
+		return
+	}
+
+	if len(opinions) == 0 {
+		t.SendMessage(chatID, fmt.Sprintf("📭 No ticker-related messages found for @%s and %s", username, ticker))
+		return
+	}
+
+	// Format the ticker history message
+	var historyMessage strings.Builder
+	historyMessage.WriteString(fmt.Sprintf("💰 <b>Ticker History for @%s (%s)</b> (Last 20)\n\n", username, ticker))
+
+	for i, opinion := range opinions {
+		historyMessage.WriteString(fmt.Sprintf("<b>%d.</b> %s\n", i+1, opinion.TweetCreatedAt.Format("2006-01-02 15:04")))
+		historyMessage.WriteString(fmt.Sprintf("💬 <i>%s</i>\n", t.truncateText(opinion.Text, 200)))
+
+		// Show reply context if available
+		if opinion.InReplyToID != "" && opinion.RepliedToAuthor != "" {
+			historyMessage.WriteString(fmt.Sprintf("↳ <i>Reply to @%s: %s</i>\n",
+				opinion.RepliedToAuthor,
+				t.truncateText(opinion.RepliedToText, 100)))
+		}
+
+		historyMessage.WriteString(fmt.Sprintf("🆔 <code>%s</code>\n", opinion.TweetID))
+		historyMessage.WriteString(fmt.Sprintf("🔍 <i>Search: %s</i>\n\n", opinion.SearchQuery))
+	}
+
+	// Add summary
+	historyMessage.WriteString(fmt.Sprintf("📊 Total ticker mentions found: %d\n", len(opinions)))
+	historyMessage.WriteString(fmt.Sprintf("📄 For full message history: /export_%s", username))
+
+	t.SendMessage(chatID, historyMessage.String())
+}
+
 func (t *TelegramService) handleExportCommand(chatID int64, command string) {
 	// Extract username from command "/export_username"
 	parts := strings.Split(command, "_")
@@ -821,6 +872,9 @@ func (t *TelegramService) handleHelpCommand(chatID int64) {
 📊 <b>User Investigation Commands:</b>
 • <code>/history_&lt;username&gt;</code> - View recent messages (20 latest)
   Example: /history_john_doe
+
+• <code>/ticker_history_&lt;username&gt;</code> - View ticker-related messages
+  Example: /ticker_history_john_doe
 
 • <code>/export_&lt;username&gt;</code> - Export full message history as file
   Example: /export_john_doe

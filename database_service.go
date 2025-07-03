@@ -38,7 +38,7 @@ func NewDatabaseService(dbPath string) (*DatabaseService, error) {
 
 // runMigrations runs database migrations
 func (s *DatabaseService) runMigrations() error {
-	return s.db.AutoMigrate(&TweetModel{}, &UserModel{}, &FUDUserModel{}, &UserRelationModel{}, &AnalysisTaskModel{}, &CachedAnalysisModel{})
+	return s.db.AutoMigrate(&TweetModel{}, &UserModel{}, &FUDUserModel{}, &UserRelationModel{}, &AnalysisTaskModel{}, &CachedAnalysisModel{}, &UserTickerOpinionModel{})
 }
 
 // Tweet related methods
@@ -794,6 +794,54 @@ func (s *DatabaseService) GetAllFUDUsersFromCache() ([]map[string]interface{}, e
 	}
 
 	return results, nil
+}
+
+// User Ticker Opinion Methods
+
+// SaveUserTickerOpinion saves user's ticker-related message from advanced search
+func (s *DatabaseService) SaveUserTickerOpinion(opinion UserTickerOpinionModel) error {
+	opinion.FoundAt = time.Now()
+	return s.db.Save(&opinion).Error
+}
+
+// GetUserTickerOpinions retrieves all ticker-related messages for a user
+func (s *DatabaseService) GetUserTickerOpinions(userID, ticker string, limit int) ([]UserTickerOpinionModel, error) {
+	var opinions []UserTickerOpinionModel
+	query := s.db.Where("user_id = ?", userID)
+	if ticker != "" {
+		query = query.Where("ticker = ?", ticker)
+	}
+	err := query.Order("tweet_created_at DESC").Limit(limit).Find(&opinions).Error
+	return opinions, err
+}
+
+// GetUserTickerOpinionsByUsername retrieves ticker opinions by username (case insensitive)
+func (s *DatabaseService) GetUserTickerOpinionsByUsername(username, ticker string, limit int) ([]UserTickerOpinionModel, error) {
+	var opinions []UserTickerOpinionModel
+	query := s.db.Where("LOWER(username) = ?", strings.ToLower(username))
+	if ticker != "" {
+		query = query.Where("ticker = ?", ticker)
+	}
+	err := query.Order("tweet_created_at DESC").Limit(limit).Find(&opinions).Error
+	return opinions, err
+}
+
+// TickerOpinionExists checks if a ticker opinion already exists
+func (s *DatabaseService) TickerOpinionExists(tweetID string) bool {
+	var count int64
+	s.db.Model(&UserTickerOpinionModel{}).Where("tweet_id = ?", tweetID).Count(&count)
+	return count > 0
+}
+
+// GetUserTickerOpinionCount returns the count of ticker opinions for a user
+func (s *DatabaseService) GetUserTickerOpinionCount(userID, ticker string) (int64, error) {
+	var count int64
+	query := s.db.Model(&UserTickerOpinionModel{}).Where("user_id = ?", userID)
+	if ticker != "" {
+		query = query.Where("ticker = ?", ticker)
+	}
+	err := query.Count(&count).Error
+	return count, err
 }
 
 // Close closes the database connection
