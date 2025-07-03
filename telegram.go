@@ -505,13 +505,13 @@ func (t *TelegramService) StoreAndBroadcastNotification(alert FUDAlertNotificati
 
 func (t *TelegramService) handleDetailCommand(chatID int64, command string) {
 	// Extract notification ID from command "/detail_12345abc"
-	parts := strings.Split(command, "_")
-	if len(parts) != 2 {
+	prefix := "/detail_"
+	if !strings.HasPrefix(command, prefix) {
 		t.SendMessage(chatID, "❌ Invalid command format. Use /detail_<id>")
 		return
 	}
 
-	notificationID := parts[1]
+	notificationID := strings.TrimPrefix(command, prefix)
 
 	t.notifMutex.RLock()
 	alert, exists := t.notifications[notificationID]
@@ -529,13 +529,13 @@ func (t *TelegramService) handleDetailCommand(chatID int64, command string) {
 
 func (t *TelegramService) handleHistoryCommand(chatID int64, command string) {
 	// Extract username from command "/history_username"
-	parts := strings.Split(command, "_")
-	if len(parts) != 2 {
+	prefix := "/history_"
+	if !strings.HasPrefix(command, prefix) {
 		t.SendMessage(chatID, "❌ Invalid command format. Use /history_<username>")
 		return
 	}
 
-	username := parts[1]
+	username := strings.TrimPrefix(command, prefix)
 
 	// Get 20 latest messages for the user
 	tweets, err := t.dbService.GetUserMessagesByUsername(username, 20)
@@ -570,13 +570,13 @@ func (t *TelegramService) handleHistoryCommand(chatID int64, command string) {
 
 func (t *TelegramService) handleTickerHistoryCommand(chatID int64, command string) {
 	// Extract username from command "/ticker_history_username"
-	parts := strings.Split(command, "_")
-	if len(parts) != 3 {
+	prefix := "/ticker_history_"
+	if !strings.HasPrefix(command, prefix) {
 		t.SendMessage(chatID, "❌ Invalid command format. Use /ticker_history_<username>")
 		return
 	}
 
-	username := parts[2]
+	username := strings.TrimPrefix(command, prefix)
 	ticker := t.ticker // Use the ticker from the environment
 
 	// Get ticker-related messages for the user
@@ -619,13 +619,13 @@ func (t *TelegramService) handleTickerHistoryCommand(chatID int64, command strin
 
 func (t *TelegramService) handleExportCommand(chatID int64, command string) {
 	// Extract username from command "/export_username"
-	parts := strings.Split(command, "_")
-	if len(parts) != 2 {
+	prefix := "/export_"
+	if !strings.HasPrefix(command, prefix) {
 		t.SendMessage(chatID, "❌ Invalid command format. Use /export_<username>")
 		return
 	}
 
-	username := parts[1]
+	username := strings.TrimPrefix(command, prefix)
 
 	// Get all messages for the user
 	tweets, err := t.dbService.GetAllUserMessagesByUsername(username)
