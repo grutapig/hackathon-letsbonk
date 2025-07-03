@@ -83,9 +83,9 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 
 	claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "user reply being analyzed: " + newMessage.Author.UserName + ":" + newMessage.Text})
 	claudeMessages = append(claudeMessages, ClaudeMessage{Role: ROLE_ASSISTANT, Content: "{"})
-
-	//fmt.Println("send to analyze:", strings.ReplaceAll(fmt.Sprintln(claudeMessages), "DARK", "Chanachbob3"))
-	fmt.Println("send to analyze:")
+	pretty, _ := json.MarshalIndent(claudeMessages, "", "\t")
+	fmt.Println("send to analyze:", string(pretty))
+	//fmt.Println("send to analyze:")
 	resp, err := claudeApi.SendMessage(claudeMessages, string(systemPromptSecondStep)+"analyzed user is "+newMessage.Author.UserName)
 	aiDecision2 := SecondStepClaudeResponse{}
 	fmt.Println("claude make a decision for this user:", resp, err)
@@ -100,7 +100,7 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 		log.Printf("error unmarshaling claude response: %s", err)
 		return
 	}
-	pretty, _ := json.MarshalIndent(aiDecision2, "", "\t")
+	pretty, _ = json.MarshalIndent(aiDecision2, "", "\t")
 	fmt.Println(string(pretty))
 
 	// Update user status after analysis
@@ -140,14 +140,24 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 		// Determine thread context from newMessage
 		originalPostText := ""
 		originalPostAuthor := ""
+		parentPostText := ""
+		parentPostAuthor := ""
+		grandParentPostText := ""
+		grandParentPostAuthor := ""
 		hasThreadContext := false
 
-		// Use GrandParentTweet as the main post if available, otherwise ParentTweet
+		// Set thread context based on available data
 		if newMessage.GrandParentTweet.ID != "" {
+			grandParentPostText = newMessage.GrandParentTweet.Text
+			grandParentPostAuthor = newMessage.GrandParentTweet.Author
+			parentPostText = newMessage.ParentTweet.Text
+			parentPostAuthor = newMessage.ParentTweet.Author
 			originalPostText = newMessage.GrandParentTweet.Text
 			originalPostAuthor = newMessage.GrandParentTweet.Author
 			hasThreadContext = true
 		} else if newMessage.ParentTweet.ID != "" {
+			parentPostText = newMessage.ParentTweet.Text
+			parentPostAuthor = newMessage.ParentTweet.Author
 			originalPostText = newMessage.ParentTweet.Text
 			originalPostAuthor = newMessage.ParentTweet.Author
 			hasThreadContext = true
@@ -155,21 +165,25 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 
 		// Create FUD alert notification
 		alert := FUDAlertNotification{
-			FUDMessageID:       newMessage.TweetID,
-			FUDUserID:          newMessage.Author.ID,
-			FUDUsername:        newMessage.Author.UserName,
-			ThreadID:           newMessage.ReplyTweetID,
-			DetectedAt:         time.Now().Format(time.RFC3339),
-			AlertSeverity:      mapRiskLevelToSeverity(aiDecision2.UserRiskLevel),
-			FUDType:            aiDecision2.FUDType,
-			FUDProbability:     aiDecision2.FUDProbability,
-			MessagePreview:     newMessage.Text,
-			RecommendedAction:  getRecommendedAction(aiDecision2),
-			KeyEvidence:        aiDecision2.KeyEvidence,
-			DecisionReason:     aiDecision2.DecisionReason,
-			OriginalPostText:   originalPostText,
-			OriginalPostAuthor: originalPostAuthor,
-			HasThreadContext:   hasThreadContext,
+			FUDMessageID:          newMessage.TweetID,
+			FUDUserID:             newMessage.Author.ID,
+			FUDUsername:           newMessage.Author.UserName,
+			ThreadID:              newMessage.ReplyTweetID,
+			DetectedAt:            time.Now().Format(time.RFC3339),
+			AlertSeverity:         mapRiskLevelToSeverity(aiDecision2.UserRiskLevel),
+			FUDType:               aiDecision2.FUDType,
+			FUDProbability:        aiDecision2.FUDProbability,
+			MessagePreview:        newMessage.Text,
+			RecommendedAction:     getRecommendedAction(aiDecision2),
+			KeyEvidence:           aiDecision2.KeyEvidence,
+			DecisionReason:        aiDecision2.DecisionReason,
+			OriginalPostText:      originalPostText,
+			OriginalPostAuthor:    originalPostAuthor,
+			ParentPostText:        parentPostText,
+			ParentPostAuthor:      parentPostAuthor,
+			GrandParentPostText:   grandParentPostText,
+			GrandParentPostAuthor: grandParentPostAuthor,
+			HasThreadContext:      hasThreadContext,
 		}
 		notificationCh <- alert
 	}

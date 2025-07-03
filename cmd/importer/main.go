@@ -15,8 +15,9 @@ func main() {
 	panicErr(err)
 	api := twitterapi.NewTwitterAPIService(os.Getenv(twitterapi.ENV_TWITTER_API_KEY), os.Getenv(twitterapi.ENV_TWITTER_API_BASE_URL), os.Getenv(twitterapi.ENV_PROXY_DSN))
 
-	os.RemoveAll("community_tweets.csv")
-	file, err := os.Create("community_tweets.csv")
+	filename := fmt.Sprintf("community_tweets_%s.csv", os.Getenv(twitterapi.ENV_DEMO_COMMUNITY_ID))
+	os.RemoveAll(filename)
+	file, err := os.Create(filename)
 	panicErr(err)
 	defer file.Close()
 
@@ -90,7 +91,7 @@ func main() {
 		fmt.Printf("📊 Intermediate statistics: %d tweets, %d replies, runtime: %v\n",
 			totalTweets, totalReplies, elapsed)
 
-		if !communityResponse.HasNext || communityResponse.NextCursor == "" {
+		if communityResponse.NextCursor == "" {
 			fmt.Println("📋 Reached end of community tweets list")
 			break
 		}

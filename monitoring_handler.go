@@ -19,7 +19,7 @@ func MonitoringIncremental(twitterApi *twitterapi.TwitterAPIService, newMessageC
 	tweetsExistsStorage := map[string]int{}
 
 	for {
-		time.Sleep(1 * time.Second)
+		time.Sleep(10 * time.Second)
 		tweetsResponse, err := twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
 			CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
 		})
@@ -30,23 +30,9 @@ func MonitoringIncremental(twitterApi *twitterapi.TwitterAPIService, newMessageC
 
 		// First time initialization
 		if len(tweetsExistsStorage) == 0 {
-			log.Println("First time initialization...")
+			log.Println("First time monitoring initialization...")
 
-			// Check if we need full database initialization
-			tweetCount, err := dbService.GetTweetCount()
-			if err != nil {
-				log.Printf("Error getting tweet count: %v", err)
-				tweetCount = 0
-			}
-
-			if tweetCount < 1100 {
-				log.Printf("Tweet count (%d) is less than 110, performing full community load...", tweetCount)
-				FullCommunityLoad(twitterApi, dbService)
-			} else {
-				log.Printf("Tweet count (%d) is >= 110, skipping full database initialization", tweetCount)
-			}
-
-			// Always initialize mapping from 3 pages for monitoring
+			// Initialize mapping from 3 pages for monitoring
 			log.Println("Initializing monitoring mapping from 3 pages...")
 			InitializeMonitoringMapping(twitterApi, tweetsExistsStorage)
 
@@ -298,7 +284,6 @@ func LoadAllRepliesRecursive(twitterApi *twitterapi.TwitterAPIService, dbService
 	return totalReplies
 }
 
-// FullCommunityLoad loads ALL community posts with all nested replies to database (complete project dump)
 func FullCommunityLoad(twitterApi *twitterapi.TwitterAPIService, dbService *DatabaseService) {
 	cursor := ""
 	totalPosts := 0
@@ -309,6 +294,9 @@ func FullCommunityLoad(twitterApi *twitterapi.TwitterAPIService, dbService *Data
 
 	for {
 		pageCount++
+		if pageCount > 5 {
+			break
+		}
 		var tweetsResponse *twitterapi.CommunityTweetsResponse
 		var err error
 

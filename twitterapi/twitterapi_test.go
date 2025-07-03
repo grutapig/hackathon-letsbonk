@@ -14,16 +14,16 @@ func TestTwitterAPIService_GetCommunityTweets(t *testing.T) {
 	api := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
 	communityTweetsResponse, err := api.GetCommunityTweets(CommunityTweetsRequest{CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID), Cursor: ""})
 	assert.NoError(t, err)
-	fmt.Println(communityTweetsResponse.HasNext, communityTweetsResponse.NextCursor, len(communityTweetsResponse.Tweets))
+	fmt.Println(communityTweetsResponse.NextCursor, len(communityTweetsResponse.Tweets))
 	for i, tweet := range communityTweetsResponse.Tweets {
-		fmt.Println(i, tweet.Author.UserName, tweet.Text, tweet.Id, tweet.QuoteCount, tweet.ReplyCount, "|||", tweet.CreatedAt, err)
+		fmt.Println(i, tweet.Author.UserName, tweet.Text, tweet.Id, tweet.QuoteCount, "reply_count", tweet.ReplyCount, "|||", tweet.CreatedAt, err)
 	}
 }
 
 func TestTwitterAPIService_GetTweetReplies(t *testing.T) {
 	godotenv.Load("../.env")
 	api := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
-	tweetRepliesResponse, err := api.GetTweetReplies(TweetRepliesRequest{TweetID: os.Getenv(ENV_DEMO_TWEET_ID), Cursor: ""})
+	tweetRepliesResponse, err := api.GetTweetReplies(TweetRepliesRequest{TweetID: os.Getenv(ENV_DEMO_TWEET_ID)})
 	fmt.Println(tweetRepliesResponse.HasNextPage, tweetRepliesResponse.NextCursor)
 	assert.NoError(t, err)
 	for i, tweet := range tweetRepliesResponse.Tweets {

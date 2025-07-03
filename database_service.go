@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -466,6 +467,114 @@ func (s *DatabaseService) MarkUserAsDetailAnalyzed(userID string) error {
 	defer s.userDataMutex.Unlock()
 	s.userAnalyzed[userID] = true
 	return nil
+}
+
+// GetUserMessagesWithContext retrieves user messages with thread context for Telegram history
+func (s *DatabaseService) GetUserMessagesWithContext(userID string, limit int) ([]TweetModel, error) {
+	var tweets []TweetModel
+	err := s.db.Where("user_id = ?", userID).Order("created_at DESC").Limit(limit).Find(&tweets).Error
+	return tweets, err
+}
+
+// GetUserMessagesByUsername retrieves user messages by username with thread context
+func (s *DatabaseService) GetUserMessagesByUsername(username string, limit int) ([]TweetModel, error) {
+	// First find user by username to get ID
+	user, err := s.GetUserByUsername(username)
+	if err != nil {
+		// Try to find user from tweets table
+		var tweets []TweetModel
+		err := s.db.Raw(`
+			SELECT DISTINCT t.* FROM tweets t 
+			JOIN users u ON t.user_id = u.id 
+			WHERE u.username = ? 
+			ORDER BY t.created_at DESC 
+			LIMIT ?`, username, limit).Find(&tweets).Error
+		return tweets, err
+	}
+
+	return s.GetUserMessagesWithContext(user.ID, limit)
+}
+
+// GetAllUserMessages retrieves all messages for a user (for full export)
+func (s *DatabaseService) GetAllUserMessages(userID string) ([]TweetModel, error) {
+	var tweets []TweetModel
+	err := s.db.Where("user_id = ?", userID).Order("created_at DESC").Find(&tweets).Error
+	return tweets, err
+}
+
+// GetAllUserMessagesByUsername retrieves all messages for a user by username (for full export)
+func (s *DatabaseService) GetAllUserMessagesByUsername(username string) ([]TweetModel, error) {
+	user, err := s.GetUserByUsername(username)
+	if err != nil {
+		// Try to find user from tweets table
+		var tweets []TweetModel
+		err := s.db.Raw(`
+			SELECT DISTINCT t.* FROM tweets t 
+			JOIN users u ON t.user_id = u.id 
+			WHERE u.username = ? 
+			ORDER BY t.created_at DESC`, username).Find(&tweets).Error
+		return tweets, err
+	}
+
+	return s.GetAllUserMessages(user.ID)
+}
+
+// SearchUsers searches for users by username substring (case-insensitive)
+func (s *DatabaseService) SearchUsers(query string, limit int) ([]UserModel, error) {
+	var users []UserModel
+
+	// Search in database first
+	err := s.db.Where("username LIKE ? OR name LIKE ?", "%"+query+"%", "%"+query+"%").
+		Order("username ASC").Limit(limit).Find(&users).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Also search in memory cache
+	s.userDataMutex.RLock()
+	defer s.userDataMutex.RUnlock()
+
+	seenUsers := make(map[string]bool)
+	for _, user := range users {
+		seenUsers[user.ID] = true
+	}
+
+	// Add users from memory that match and weren't found in DB
+	for _, user := range s.users {
+		if seenUsers[user.ID] {
+			continue
+		}
+		if strings.Contains(strings.ToLower(user.Username), strings.ToLower(query)) ||
+			strings.Contains(strings.ToLower(user.Name), strings.ToLower(query)) {
+			users = append(users, *user)
+			if len(users) >= limit {
+				break
+			}
+		}
+	}
+
+	return users, nil
+}
+
+// GetUserTweetForAnalysis gets a recent tweet from user for second step analysis
+func (s *DatabaseService) GetUserTweetForAnalysis(username string) (*TweetModel, error) {
+	var tweet TweetModel
+
+	// Try to find user and get their most recent tweet
+	user, err := s.GetUserByUsername(username)
+	if err != nil {
+		// Try to find from tweets table directly
+		err := s.db.Raw(`
+			SELECT t.* FROM tweets t 
+			JOIN users u ON t.user_id = u.id 
+			WHERE u.username = ? 
+			ORDER BY t.created_at DESC 
+			LIMIT 1`, username).First(&tweet).Error
+		return &tweet, err
+	}
+
+	err = s.db.Where("user_id = ?", user.ID).Order("created_at DESC").First(&tweet).Error
+	return &tweet, err
 }
 
 // Close closes the database connection

@@ -53,14 +53,24 @@ func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan t
 				// Determine thread context from newMessage
 				originalPostText := ""
 				originalPostAuthor := ""
+				parentPostText := ""
+				parentPostAuthor := ""
+				grandParentPostText := ""
+				grandParentPostAuthor := ""
 				hasThreadContext := false
 
-				// Use GrandParentTweet as the main post if available, otherwise ParentTweet
+				// Set thread context based on available data
 				if newMessage.GrandParentTweet.ID != "" {
+					grandParentPostText = newMessage.GrandParentTweet.Text
+					grandParentPostAuthor = newMessage.GrandParentTweet.Author
+					parentPostText = newMessage.ParentTweet.Text
+					parentPostAuthor = newMessage.ParentTweet.Author
 					originalPostText = newMessage.GrandParentTweet.Text
 					originalPostAuthor = newMessage.GrandParentTweet.Author
 					hasThreadContext = true
 				} else if newMessage.ParentTweet.ID != "" {
+					parentPostText = newMessage.ParentTweet.Text
+					parentPostAuthor = newMessage.ParentTweet.Author
 					originalPostText = newMessage.ParentTweet.Text
 					originalPostAuthor = newMessage.ParentTweet.Author
 					hasThreadContext = true
@@ -68,21 +78,25 @@ func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan t
 
 				// Create quick FUD alert notification (with basic data from first step)
 				alert := FUDAlertNotification{
-					FUDMessageID:       newMessage.TweetID,
-					FUDUserID:          newMessage.Author.ID,
-					FUDUsername:        newMessage.Author.UserName,
-					ThreadID:           newMessage.ReplyTweetID,
-					DetectedAt:         time.Now().Format(time.RFC3339),
-					AlertSeverity:      "medium", // Default for known FUD users
-					FUDType:            "known_fud_user_activity",
-					FUDProbability:     float64(aiDecision.FudProbability) / 100.0, // Convert percentage to decimal
-					MessagePreview:     newMessage.Text,
-					RecommendedAction:  "MONITOR_ACTIVITY",
-					KeyEvidence:        []string{"Known FUD user", aiDecision.Reason},
-					DecisionReason:     "Quick analysis of known FUD user activity",
-					OriginalPostText:   originalPostText,
-					OriginalPostAuthor: originalPostAuthor,
-					HasThreadContext:   hasThreadContext,
+					FUDMessageID:          newMessage.TweetID,
+					FUDUserID:             newMessage.Author.ID,
+					FUDUsername:           newMessage.Author.UserName,
+					ThreadID:              newMessage.ReplyTweetID,
+					DetectedAt:            time.Now().Format(time.RFC3339),
+					AlertSeverity:         "medium", // Default for known FUD users
+					FUDType:               "known_fud_user_activity",
+					FUDProbability:        float64(aiDecision.FudProbability) / 100.0, // Convert percentage to decimal
+					MessagePreview:        newMessage.Text,
+					RecommendedAction:     "MONITOR_ACTIVITY",
+					KeyEvidence:           []string{"Known FUD user", aiDecision.Reason},
+					DecisionReason:        "Quick analysis of known FUD user activity",
+					OriginalPostText:      originalPostText,
+					OriginalPostAuthor:    originalPostAuthor,
+					ParentPostText:        parentPostText,
+					ParentPostAuthor:      parentPostAuthor,
+					GrandParentPostText:   grandParentPostText,
+					GrandParentPostAuthor: grandParentPostAuthor,
+					HasThreadContext:      hasThreadContext,
 				}
 				log.Printf("Sending quick notification for known FUD user %s", newMessage.Author.UserName)
 				notificationCh <- alert

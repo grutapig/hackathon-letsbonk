@@ -22,9 +22,13 @@ type FUDAlertNotification struct {
 	KeyEvidence       []string `json:"key_evidence"`
 	DecisionReason    string   `json:"decision_reason"`
 	// Thread context fields
-	OriginalPostText   string `json:"original_post_text"`
-	OriginalPostAuthor string `json:"original_post_author"`
-	HasThreadContext   bool   `json:"has_thread_context"`
+	OriginalPostText      string `json:"original_post_text"`
+	OriginalPostAuthor    string `json:"original_post_author"`
+	ParentPostText        string `json:"parent_post_text"`
+	ParentPostAuthor      string `json:"parent_post_author"`
+	GrandParentPostText   string `json:"grandparent_post_text"`
+	GrandParentPostAuthor string `json:"grandparent_post_author"`
+	HasThreadContext      bool   `json:"has_thread_context"`
 }
 
 func NewNotificationFormatter() *NotificationFormatter {
@@ -37,13 +41,33 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 
 	// Build context section if available
 	contextSection := ""
-	if alert.HasThreadContext && alert.OriginalPostText != "" {
-		contextSection = fmt.Sprintf(`
+	if alert.HasThreadContext {
+		if alert.GrandParentPostText != "" {
+			// Show grandparent -> parent -> current structure
+			contextSection = fmt.Sprintf(`
+
+📄 <b>Thread Context:</b>
+<b>Root:</b> <i>%s</i> - @%s
+<b>Reply:</b> <i>%s</i> - @%s`,
+				nf.truncateText(alert.GrandParentPostText, 80),
+				alert.GrandParentPostAuthor,
+				nf.truncateText(alert.ParentPostText, 80),
+				alert.ParentPostAuthor)
+		} else if alert.OriginalPostText != "" || alert.ParentPostText != "" {
+			// Show parent -> current structure
+			postText := alert.OriginalPostText
+			postAuthor := alert.OriginalPostAuthor
+			if postText == "" {
+				postText = alert.ParentPostText
+				postAuthor = alert.ParentPostAuthor
+			}
+			contextSection = fmt.Sprintf(`
 
 📄 <b>Original Post Context:</b>
 <i>%s</i> - @%s`,
-			nf.truncateText(alert.OriginalPostText, 100),
-			alert.OriginalPostAuthor)
+				nf.truncateText(postText, 100),
+				postAuthor)
+		}
 	}
 
 	message := fmt.Sprintf(`%s <b>FUD ALERT - %s SEVERITY</b>
@@ -60,6 +84,10 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 • <a href="https://twitter.com/%s/status/%s">FUD Message</a>
 • <a href="https://twitter.com/user/status/%s">Original Thread</a>
 
+🔍 <b>Investigation:</b>
+• /history_%s - View recent messages
+• /export_%s - Export full history
+
 ⏰ <b>Detected:</b> %s
 🆔 <b>IDs:</b> User: %s | Tweet: %s`,
 		severityEmoji, strings.ToUpper(alert.AlertSeverity),
@@ -71,6 +99,7 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 		contextSection,
 		alert.FUDUsername, alert.FUDMessageID,
 		alert.ThreadID,
+		alert.FUDUsername, alert.FUDUsername,
 		nf.formatTime(alert.DetectedAt),
 		alert.FUDUserID, alert.FUDMessageID)
 
@@ -95,9 +124,12 @@ func (nf *NotificationFormatter) FormatForTelegramWithDetail(alert FUDAlertNotif
 • <a href="https://twitter.com/%s/status/%s">FUD Message</a>
 • <a href="https://twitter.com/user/status/%s">Original Thread</a>
 
-⏰ <b>Detected:</b> %s
+🔍 <b>Investigation Commands:</b>
+• /detail_%s - Detailed analysis
+• /history_%s - View recent messages  
+• /export_%s - Export full history
 
-📋 <b>For detailed analysis, use:</b> /detail_%s`,
+⏰ <b>Detected:</b> %s`,
 		severityEmoji, strings.ToUpper(alert.AlertSeverity),
 		typeEmoji, nf.formatFUDType(alert.FUDType),
 		alert.FUDUsername,
@@ -106,8 +138,8 @@ func (nf *NotificationFormatter) FormatForTelegramWithDetail(alert FUDAlertNotif
 		nf.truncateText(alert.MessagePreview, 120),
 		alert.FUDUsername, alert.FUDMessageID,
 		alert.ThreadID,
-		nf.formatTime(alert.DetectedAt),
-		notificationID)
+		notificationID, alert.FUDUsername, alert.FUDUsername,
+		nf.formatTime(alert.DetectedAt))
 
 	return message
 }
@@ -127,14 +159,37 @@ func (nf *NotificationFormatter) FormatDetailedView(alert FUDAlertNotification) 
 
 	// Build thread context section for detailed view
 	threadContextSection := ""
-	if alert.HasThreadContext && alert.OriginalPostText != "" {
-		threadContextSection = fmt.Sprintf(`
+	if alert.HasThreadContext {
+		if alert.GrandParentPostText != "" {
+			// Show full thread: grandparent -> parent -> current
+			threadContextSection = fmt.Sprintf(`
+
+📄 <b>FULL THREAD CONTEXT</b>
+🏠 <b>Root Post:</b> @%s
+📝 <i>%s</i>
+
+💬 <b>Parent Reply:</b> @%s
+📝 <i>%s</i>`,
+				alert.GrandParentPostAuthor,
+				alert.GrandParentPostText,
+				alert.ParentPostAuthor,
+				alert.ParentPostText)
+		} else if alert.OriginalPostText != "" || alert.ParentPostText != "" {
+			// Show single parent context
+			postText := alert.OriginalPostText
+			postAuthor := alert.OriginalPostAuthor
+			if postText == "" {
+				postText = alert.ParentPostText
+				postAuthor = alert.ParentPostAuthor
+			}
+			threadContextSection = fmt.Sprintf(`
 
 📄 <b>ORIGINAL POST (FULL TEXT)</b>
 👤 Author: @%s
 📝 Content: <i>%s</i>`,
-			alert.OriginalPostAuthor,
-			alert.OriginalPostText)
+				postAuthor,
+				postText)
+		}
 	}
 
 	message := fmt.Sprintf(`%s <b>DETAILED FUD ANALYSIS</b>
@@ -160,6 +215,10 @@ func (nf *NotificationFormatter) FormatDetailedView(alert FUDAlertNotification) 
 • <a href="https://twitter.com/user/status/%s">View Original Thread</a>
 • <a href="https://twitter.com/%s">User Profile</a>
 
+🕵️ <b>INVESTIGATION COMMANDS</b>
+• /history_%s - View recent messages
+• /export_%s - Export full history
+
 📅 <b>DETECTION METADATA</b>
 Detected At: %s
 FUD Message ID: %s
@@ -178,6 +237,7 @@ User ID: %s`,
 		alert.FUDUsername, alert.FUDMessageID,
 		alert.ThreadID,
 		alert.FUDUsername,
+		alert.FUDUsername, alert.FUDUsername,
 		nf.formatTime(alert.DetectedAt),
 		alert.FUDMessageID,
 		alert.ThreadID,

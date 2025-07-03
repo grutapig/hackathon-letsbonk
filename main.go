@@ -15,6 +15,40 @@ const ENV_DEV_CONFIG = ".dev.env"
 const PROMPT_FILE_STEP1 = "prompt1.txt"
 const PROMPT_FILE_STEP2 = "prompt2.txt"
 
+// initializeData handles initial data loading based on environment configuration
+func initializeData(dbService *DatabaseService, twitterApi *twitterapi.TwitterAPIService) {
+	// Check if CSV import is requested
+	csvPath := os.Getenv(ENV_IMPORT_CSV_PATH)
+	if csvPath != "" {
+		log.Printf("CSV import path specified: %s", csvPath)
+
+		// Import from CSV instead of full community load
+		importer := NewCSVImporter(dbService)
+		result, err := importer.ImportCSV(csvPath)
+		if err != nil {
+			log.Printf("CSV import failed: %v", err)
+			log.Println("Falling back to community data loading...")
+		} else {
+			log.Printf("CSV import successful: %s", result.String())
+			return // Skip community loading if CSV import was successful
+		}
+	}
+
+	// Check if full community data loading is needed
+	tweetCount, err := dbService.GetTweetCount()
+	if err != nil {
+		log.Printf("Error getting tweet count: %v", err)
+		tweetCount = 0
+	}
+
+	if tweetCount < 10 {
+		log.Printf("Tweet count (%d) is less than 10, performing full community load...", tweetCount)
+		FullCommunityLoad(twitterApi, dbService)
+	} else {
+		log.Printf("Tweet count (%d) is >= 10, skipping full database initialization", tweetCount)
+	}
+}
+
 func main() {
 	err := godotenv.Load(ENV_DEV_CONFIG)
 	if err != nil {
@@ -30,22 +64,31 @@ func main() {
 	}
 	twitterApi := twitterapi.NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
 	notificationFormatter := NewNotificationFormatter()
-	telegramService, err := NewTelegramService(os.Getenv(ENV_TELEGRAM_API_KEY), os.Getenv(ENV_PROXY_DSN), os.Getenv(ENV_TELEGRAM_ADMIN_CHAT_ID), notificationFormatter)
-	if err != nil {
-		panic(err)
-	}
 
 	// Initialize database service
-	dbService, err := NewDatabaseService("hackathon.db")
+	dbName := os.Getenv(ENV_DATABASE_NAME)
+	if dbName == "" {
+		dbName = "hackathon.db"
+	}
+	dbService, err := NewDatabaseService(dbName)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to initialize database: %v", err))
 	}
 	defer dbService.Close()
 	log.Println("Database service initialized successfully")
 
+	telegramService, err := NewTelegramService(os.Getenv(ENV_TELEGRAM_API_KEY), os.Getenv(ENV_PROXY_DSN), os.Getenv(ENV_TELEGRAM_ADMIN_CHAT_ID), notificationFormatter, dbService)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to initialize telegram service: %v", err))
+	}
+
 	// Initialize user status manager
 	userStatusManager := NewUserStatusManager()
 	userStatusManager.StartPeriodicSave()
+
+	// Initialize data (CSV import or community loading)
+	log.Println("Initializing data...")
+	initializeData(dbService, twitterApi)
 
 	// Start Telegram service
 	telegramService.StartListening()
