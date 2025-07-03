@@ -50,7 +50,7 @@ func initializeData(dbService *DatabaseService, twitterApi *twitterapi.TwitterAP
 }
 
 func main() {
-	err := godotenv.Load(ENV_DEV_CONFIG)
+	err := godotenv.Load(".hosico.env")
 	if err != nil {
 		panic(err)
 	}

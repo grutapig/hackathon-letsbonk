@@ -151,23 +151,23 @@ func (c *CSVImporter) ImportCSV(csvFilePath string) (*ImportResult, error) {
 
 func (c *CSVImporter) mapColumns(header []string) map[string]int {
 	columnMap := make(map[string]int)
-
+	//message_author,message_number,message_date,reply_count,reply_to_tweet,message_text,author_id,tweet_id
 	for i, col := range header {
 		col = strings.TrimSpace(col)
 		switch col {
-		case "author_username", "username":
+		case "author_username", "username", "message_author":
 			columnMap["author_username"] = i
 		case "tweet_id", "id":
 			columnMap["tweet_id"] = i
 		case "author_id", "user_id":
 			columnMap["author_id"] = i
-		case "date", "created_at":
+		case "date", "created_at", "message_date":
 			columnMap["date"] = i
 		case "reply_count", "replies":
 			columnMap["reply_count"] = i
-		case "reply_to_id", "in_reply_to":
+		case "reply_to_tweet", "in_reply_to":
 			columnMap["reply_to_id"] = i
-		case "text", "content":
+		case "message_text", "content":
 			columnMap["text"] = i
 		}
 	}

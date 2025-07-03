@@ -11,3 +11,4 @@ advanced_search_results.csv
 prompt_simple.txt
 *.db
 *.csv
+*.sh

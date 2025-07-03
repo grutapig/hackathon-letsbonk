@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
-	"sync"
 	"time"
 
 	"gorm.io/driver/sqlite"
@@ -13,12 +11,6 @@ import (
 
 type DatabaseService struct {
 	db *gorm.DB
-	// In-memory storage for user data (temporary for debugging)
-	users         map[string]*UserModel
-	userAnalyzed  map[string]bool
-	fudUsers      map[string]*FUDUserModel
-	userRelations map[string][]UserRelationModel
-	userDataMutex sync.RWMutex
 }
 
 // NewDatabaseService creates a new database service instance
@@ -31,11 +23,7 @@ func NewDatabaseService(dbPath string) (*DatabaseService, error) {
 	}
 
 	service := &DatabaseService{
-		db:            db,
-		users:         make(map[string]*UserModel),
-		userAnalyzed:  make(map[string]bool),
-		fudUsers:      make(map[string]*FUDUserModel),
-		userRelations: make(map[string][]UserRelationModel),
+		db: db,
 	}
 
 	// Run migrations
@@ -122,56 +110,44 @@ func (s *DatabaseService) DeleteTweet(id string) error {
 
 // User related methods
 
-// SaveUser saves or updates a user in memory (temporary for debugging)
+// SaveUser saves or updates a user in the database
 func (s *DatabaseService) SaveUser(user UserModel) error {
-	s.userDataMutex.Lock()
-	defer s.userDataMutex.Unlock()
 	user.UpdatedAt = time.Now()
-	s.users[user.ID] = &user
-	return nil
+	return s.db.Save(&user).Error
 }
 
-// GetUser retrieves a user by ID from memory
+// GetUser retrieves a user by ID from the database
 func (s *DatabaseService) GetUser(id string) (*UserModel, error) {
-	s.userDataMutex.RLock()
-	defer s.userDataMutex.RUnlock()
-	user, exists := s.users[id]
-	if !exists {
-		return nil, fmt.Errorf("user not found")
+	var user UserModel
+	err := s.db.Where("id = ?", id).First(&user).Error
+	if err != nil {
+		return nil, err
 	}
-	return user, nil
+	return &user, nil
 }
 
-// GetUserByUsername retrieves a user by username from memory
+// GetUserByUsername retrieves a user by username from the database
 func (s *DatabaseService) GetUserByUsername(username string) (*UserModel, error) {
-	s.userDataMutex.RLock()
-	defer s.userDataMutex.RUnlock()
-	for _, user := range s.users {
-		if user.Username == username {
-			return user, nil
-		}
+	var user UserModel
+	err := s.db.Where("username = ?", username).First(&user).Error
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("user not found")
+	return &user, nil
 }
 
-// UserExists checks if a user exists in memory
+// UserExists checks if a user exists in the database
 func (s *DatabaseService) UserExists(id string) bool {
-	s.userDataMutex.RLock()
-	defer s.userDataMutex.RUnlock()
-	_, exists := s.users[id]
-	return exists
+	var count int64
+	s.db.Model(&UserModel{}).Where("id = ?", id).Count(&count)
+	return count > 0
 }
 
-// UserExistsByUsername checks if a user exists by username in memory
+// UserExistsByUsername checks if a user exists by username in the database
 func (s *DatabaseService) UserExistsByUsername(username string) bool {
-	s.userDataMutex.RLock()
-	defer s.userDataMutex.RUnlock()
-	for _, user := range s.users {
-		if user.Username == username {
-			return true
-		}
-	}
-	return false
+	var count int64
+	s.db.Model(&UserModel{}).Where("username = ?", username).Count(&count)
+	return count > 0
 }
 
 // DeleteUser deletes a user from the database
@@ -181,32 +157,27 @@ func (s *DatabaseService) DeleteUser(id string) error {
 
 // FUD User related methods
 
-// SaveFUDUser saves or updates a FUD user in memory
+// SaveFUDUser saves or updates a FUD user in the database
 func (s *DatabaseService) SaveFUDUser(fudUser FUDUserModel) error {
-	s.userDataMutex.Lock()
-	defer s.userDataMutex.Unlock()
 	fudUser.UpdatedAt = time.Now()
-	s.fudUsers[fudUser.UserID] = &fudUser
-	return nil
+	return s.db.Save(&fudUser).Error
 }
 
-// GetFUDUser retrieves a FUD user by user ID from memory
+// GetFUDUser retrieves a FUD user by user ID from the database
 func (s *DatabaseService) GetFUDUser(userID string) (*FUDUserModel, error) {
-	s.userDataMutex.RLock()
-	defer s.userDataMutex.RUnlock()
-	fudUser, exists := s.fudUsers[userID]
-	if !exists {
-		return nil, fmt.Errorf("FUD user not found")
+	var fudUser FUDUserModel
+	err := s.db.Where("user_id = ?", userID).First(&fudUser).Error
+	if err != nil {
+		return nil, err
 	}
-	return fudUser, nil
+	return &fudUser, nil
 }
 
-// IsFUDUser checks if a user is marked as FUD in memory
+// IsFUDUser checks if a user is marked as FUD in the database
 func (s *DatabaseService) IsFUDUser(userID string) bool {
-	s.userDataMutex.RLock()
-	defer s.userDataMutex.RUnlock()
-	_, exists := s.fudUsers[userID]
-	return exists
+	var count int64
+	s.db.Model(&FUDUserModel{}).Where("user_id = ?", userID).Count(&count)
+	return count > 0
 }
 
 // GetAllFUDUsers retrieves all FUD users
@@ -216,18 +187,13 @@ func (s *DatabaseService) GetAllFUDUsers() ([]FUDUserModel, error) {
 	return fudUsers, err
 }
 
-// IncrementFUDUserMessageCount increments the message count for a FUD user in memory
+// IncrementFUDUserMessageCount increments the message count for a FUD user in the database
 func (s *DatabaseService) IncrementFUDUserMessageCount(userID string, messageID string) error {
-	s.userDataMutex.Lock()
-	defer s.userDataMutex.Unlock()
-	fudUser, exists := s.fudUsers[userID]
-	if !exists {
-		return fmt.Errorf("FUD user not found")
-	}
-	fudUser.MessageCount++
-	fudUser.LastMessageID = messageID
-	fudUser.UpdatedAt = time.Now()
-	return nil
+	return s.db.Model(&FUDUserModel{}).Where("user_id = ?", userID).Updates(map[string]interface{}{
+		"message_count":   gorm.Expr("message_count + 1"),
+		"last_message_id": messageID,
+		"updated_at":      time.Now(),
+	}).Error
 }
 
 // DeleteFUDUser deletes a FUD user from the database
@@ -454,19 +420,16 @@ func (s *DatabaseService) findRootPostID(tweetID string) string {
 	return s.findRootPostID(tweet.InReplyToID)
 }
 
-// IsUserDetailAnalyzed checks if user has been through detailed analysis in memory
+// IsUserDetailAnalyzed checks if user has been through detailed analysis in the database
 func (s *DatabaseService) IsUserDetailAnalyzed(userID string) bool {
-	s.userDataMutex.RLock()
-	defer s.userDataMutex.RUnlock()
-	return s.userAnalyzed[userID]
+	var user UserModel
+	err := s.db.Where("id = ?", userID).First(&user).Error
+	return err == nil && user.IsDetailAnalyzed
 }
 
-// MarkUserAsDetailAnalyzed marks user as having been through detailed analysis in memory
+// MarkUserAsDetailAnalyzed marks user as having been through detailed analysis in the database
 func (s *DatabaseService) MarkUserAsDetailAnalyzed(userID string) error {
-	s.userDataMutex.Lock()
-	defer s.userDataMutex.Unlock()
-	s.userAnalyzed[userID] = true
-	return nil
+	return s.db.Model(&UserModel{}).Where("id = ?", userID).Update("is_detail_analyzed", true).Error
 }
 
 // GetUserMessagesWithContext retrieves user messages with thread context for Telegram history
@@ -542,38 +505,9 @@ func (s *DatabaseService) GetTopActiveUsers(limit int) ([]UserModel, error) {
 // SearchUsers searches for users by username substring (case-insensitive)
 func (s *DatabaseService) SearchUsers(query string, limit int) ([]UserModel, error) {
 	var users []UserModel
-
-	// Search in database first
 	err := s.db.Where("username LIKE ? OR name LIKE ?", "%"+query+"%", "%"+query+"%").
 		Order("username ASC").Limit(limit).Find(&users).Error
-	if err != nil {
-		return nil, err
-	}
-
-	// Also search in memory cache
-	s.userDataMutex.RLock()
-	defer s.userDataMutex.RUnlock()
-
-	seenUsers := make(map[string]bool)
-	for _, user := range users {
-		seenUsers[user.ID] = true
-	}
-
-	// Add users from memory that match and weren't found in DB
-	for _, user := range s.users {
-		if seenUsers[user.ID] {
-			continue
-		}
-		if strings.Contains(strings.ToLower(user.Username), strings.ToLower(query)) ||
-			strings.Contains(strings.ToLower(user.Name), strings.ToLower(query)) {
-			users = append(users, *user)
-			if len(users) >= limit {
-				break
-			}
-		}
-	}
-
-	return users, nil
+	return users, err
 }
 
 // GetUserTweetForAnalysis gets a recent tweet from user for second step analysis
@@ -660,6 +594,68 @@ func (s *DatabaseService) GetRunningAnalysisTasks() ([]AnalysisTaskModel, error)
 	var tasks []AnalysisTaskModel
 	err := s.db.Where("status = ?", ANALYSIS_STATUS_RUNNING).Find(&tasks).Error
 	return tasks, err
+}
+
+// ClearAllAnalysisFlags clears all FUD flags and analysis status for fresh start
+func (s *DatabaseService) ClearAllAnalysisFlags() error {
+	tx := s.db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Clear all FUD users
+	if err := tx.Exec("DELETE FROM fud_users").Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to clear FUD users: %w", err)
+	}
+
+	// Reset all user analysis flags
+	if err := tx.Model(&UserModel{}).Updates(map[string]interface{}{
+		"is_fud":             false,
+		"fud_type":           "",
+		"is_detail_analyzed": false,
+		"updated_at":         time.Now(),
+	}).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to reset user flags: %w", err)
+	}
+
+	// Clear all analysis tasks
+	if err := tx.Exec("DELETE FROM analysis_tasks").Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to clear analysis tasks: %w", err)
+	}
+
+	return tx.Commit().Error
+}
+
+// GetAnalysisStats returns statistics about analysis data
+func (s *DatabaseService) GetAnalysisStats() (map[string]interface{}, error) {
+	stats := make(map[string]interface{})
+
+	// Count total users
+	var totalUsers int64
+	s.db.Model(&UserModel{}).Count(&totalUsers)
+	stats["total_users"] = totalUsers
+
+	// Count analyzed users
+	var analyzedUsers int64
+	s.db.Model(&UserModel{}).Where("is_detail_analyzed = ?", true).Count(&analyzedUsers)
+	stats["analyzed_users"] = analyzedUsers
+
+	// Count FUD users
+	var fudUsers int64
+	s.db.Model(&FUDUserModel{}).Count(&fudUsers)
+	stats["fud_users"] = fudUsers
+
+	// Count running tasks
+	var runningTasks int64
+	s.db.Model(&AnalysisTaskModel{}).Where("status = ?", ANALYSIS_STATUS_RUNNING).Count(&runningTasks)
+	stats["running_tasks"] = runningTasks
+
+	return stats, nil
 }
 
 // Close closes the database connection
