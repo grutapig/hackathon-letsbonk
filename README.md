@@ -88,3 +88,9 @@ Collected data is processed using AI to determine the likelihood of FUD activity
 ## 🏆 Technical Achievement
 
 The MVP leverages Twitter monitoring, custom development tools, and analysis insights from substantial real-world data processing, making it technically robust and achievable within the hackathon timeframe while providing a solid foundation for rapid prototyping and future scaling.
+
+---
+
+## 📊 Beta Testing Report
+
+For detailed information about the beta testing phase conducted on the $DARK community, including performance metrics, technical challenges, and system improvements, see the [Beta Testing Report](beta_test_report.md).
