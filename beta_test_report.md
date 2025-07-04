@@ -9,7 +9,7 @@ The beta testing phase of the Twitter/X monitoring and FUD detection system was 
 - **Target Community**: $DARK Twitter community
 - **Total Users Analyzed**: 1,200 community members
 - **Testing Period**: Multiple phases with iterative improvements
-- **Detection Method**: Two-step Claude AI analysis with manual verification
+- **Detection Method**: Two-step LLM analysis with manual verification
 
 ## Testing Phases and Results
 
