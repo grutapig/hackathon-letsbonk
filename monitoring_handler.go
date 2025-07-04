@@ -19,7 +19,7 @@ func MonitoringIncremental(twitterApi *twitterapi.TwitterAPIService, newMessageC
 	tweetsExistsStorage := map[string]int{}
 
 	for {
-		time.Sleep(10 * time.Second)
+		time.Sleep(30 * time.Second)
 		tweetsResponse, err := twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
 			CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
 		})

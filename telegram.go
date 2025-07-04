@@ -716,6 +716,7 @@ func (t *TelegramService) handleCacheCommand(chatID int64, command string) {
 	message.WriteString(fmt.Sprintf("👤 <b>User Details:</b>\n"))
 	message.WriteString(fmt.Sprintf("• Username: @%s\n", user.Username))
 	message.WriteString(fmt.Sprintf("• Name: %s\n", user.Name))
+	message.WriteString(fmt.Sprintf("• https://x.com/%s\n", user.Username))
 	message.WriteString(fmt.Sprintf("• User ID: <code>%s</code>\n\n", user.ID))
 
 	// Analysis results
@@ -1516,9 +1517,10 @@ func (t *TelegramService) handleFudListCommand(chatID int64, args []string) {
 
 		// Add enhanced command links
 		message.WriteString("    🔍 <b>Commands:</b>\n")
-		message.WriteString(fmt.Sprintf("      • /history_%s - Message history\n", username))
-		message.WriteString(fmt.Sprintf("      • /ticker_history_%s - Ticker posts\n", username))
-		message.WriteString(fmt.Sprintf("      • /cache_%s - detailed analysis\n", username))
+		message.WriteString(fmt.Sprintf("      /export_%s - Message history\n", username))
+		message.WriteString(fmt.Sprintf("      /ticker_history_%s - Ticker posts\n", username))
+		message.WriteString(fmt.Sprintf("      /cache_%s - detailed analysis\n", username))
+		message.WriteString(fmt.Sprintf("      https://x.com/%s\n", username))
 		message.WriteString("\n")
 	}
 
