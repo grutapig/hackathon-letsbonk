@@ -184,6 +184,23 @@ func (t *TelegramService) StopListening() {
 	log.Println("Telegram service stopped listening")
 }
 
+func (t *TelegramService) isAdminChat(chatID int64) bool {
+	adminChatsEnv := os.Getenv(ENV_TELEGRAM_ADMIN_CHAT_ID)
+	if adminChatsEnv == "" {
+		return false
+	}
+
+	adminChatIDs := strings.Split(adminChatsEnv, ",")
+	chatIDStr := strconv.FormatInt(chatID, 10)
+
+	for _, adminChatID := range adminChatIDs {
+		if strings.TrimSpace(adminChatID) == chatIDStr {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *TelegramService) processUpdates() error {
 	updates, err := t.getUpdates()
 	if err != nil {
@@ -248,10 +265,18 @@ func (t *TelegramService) processUpdates() error {
 			case command == "/tasks":
 				go t.handleTasksCommand(chatID)
 			case command == "/top20_analyze":
+				if !t.isAdminChat(chatID) {
+					go t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
+					continue
+				}
 				go t.handleTop20AnalyzeCommand(chatID)
 			case command == "/batch_analyze":
 				go t.handleBatchAnalyzeCommand(chatID, args)
 			case command == "/analyze_all":
+				if !t.isAdminChat(chatID) {
+					go t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
+					continue
+				}
 				go t.handleAnalyzeAllCommand(chatID)
 			case command == "/help" || command == "/start":
 				go t.handleHelpCommand(chatID)
@@ -265,9 +290,9 @@ func (t *TelegramService) processUpdates() error {
 }
 
 func (t *TelegramService) getUpdates() ([]TelegramUpdate, error) {
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=1", t.apiKey, t.lastOffset)
+	uri := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=1", t.apiKey, t.lastOffset)
 
-	resp, err := t.client.Get(url)
+	resp, err := t.client.Get(uri)
 	if err != nil {
 		return nil, err
 	}
