@@ -1,4 +1,4 @@
-# Beta Testing Report: $DARK Community FUD Detection System
+# Beta Testing Report: AI agent "Better Call GRUTA"?
 
 ## Executive Summary
 

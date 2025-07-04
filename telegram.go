@@ -1059,7 +1059,7 @@ func (t *TelegramService) handleAnalyzeCommand(chatID int64, args []string) {
 	}
 
 	// Start analysis in goroutine
-	go t.processAnalysisTask(taskID)
+	go t.processAnalysisTask(taskID, chatID)
 
 	// Start progress monitor
 	go t.monitorAnalysisProgress(taskID)
@@ -1174,7 +1174,7 @@ func (t *TelegramService) handleHelpCommand(chatID int64) {
 }
 
 // processAnalysisTask processes the actual analysis work
-func (t *TelegramService) processAnalysisTask(taskID string) {
+func (t *TelegramService) processAnalysisTask(taskID string, chatID int64) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("Analysis task %s panicked: %v", taskID, r)
@@ -1249,6 +1249,7 @@ func (t *TelegramService) processAnalysisTask(taskID string) {
 			IsManualAnalysis:  true,
 			ForceNotification: true,
 			TaskID:            taskID,
+			TelegramChatID:    chatID,
 		}
 	} else {
 		newMessage = twitterapi.NewMessage{
@@ -1286,6 +1287,7 @@ func (t *TelegramService) processAnalysisTask(taskID string) {
 			IsManualAnalysis:  true,
 			ForceNotification: true,
 			TaskID:            taskID,
+			TelegramChatID:    chatID,
 		}
 	}
 
@@ -1692,7 +1694,7 @@ func (t *TelegramService) handleTop20AnalyzeCommand(chatID int64) {
 		}
 
 		// Start analysis in background
-		go t.processAnalysisTask(taskID)
+		go t.processAnalysisTask(taskID, chatID)
 		analysisCount++
 
 		// Small delay between launches to avoid overwhelming the system
