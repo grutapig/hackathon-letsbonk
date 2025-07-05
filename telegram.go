@@ -285,8 +285,6 @@ func (t *TelegramService) processUpdates() error {
 				go t.handleAnalyzeCommand(chatID, args)
 			case command == "/search":
 				go t.handleSearchCommand(chatID, args)
-			case command == "/import":
-				go t.handleImportCommand(chatID, args)
 			case command == "/fudlist":
 				go t.handleFudListCommand(chatID, args)
 			case command == "/tasks":
@@ -1094,52 +1092,6 @@ func (t *TelegramService) handleAnalyzeCommand(chatID int64, args []string) {
 	go t.monitorAnalysisProgress(taskID)
 }
 
-func (t *TelegramService) handleImportCommand(chatID int64, args []string) {
-	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-		t.SendMessage(chatID, "❌ Invalid command format. Use /import <csv_file>\nExample: /import community_tweets.csv")
-		return
-	}
-
-	csvFile := strings.TrimSpace(args[0])
-
-	// Send processing message
-	t.SendMessage(chatID, fmt.Sprintf("🔄 Starting CSV import from '%s'...\nThis may take several minutes for large files.", csvFile))
-
-	// Run import in goroutine to avoid blocking
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.SendMessage(chatID, fmt.Sprintf("❌ Import failed with panic: %v", r))
-			}
-		}()
-
-		// Create CSV importer
-		importer := NewCSVImporter(t.dbService)
-
-		// Run import
-		result, err := importer.ImportCSV(csvFile)
-		if err != nil {
-			t.SendMessage(chatID, fmt.Sprintf("❌ Import failed: %v", err))
-			return
-		}
-
-		// Send success message with results
-		successMessage := fmt.Sprintf("✅ <b>CSV Import Complete!</b>\n\n📊 <b>Import Statistics:</b>\n• Original tweets: %d\n• Reply tweets: %d\n• Remaining tweets: %d\n• Skipped tweets: %d\n• <b>Total processed: %d</b>\n\n📁 File: %s",
-			result.OriginalTweets,
-			result.ReplyTweets,
-			result.RemainingTweets,
-			result.SkippedTweets,
-			result.TotalProcessed,
-			csvFile)
-
-		if result.SkippedTweets > 0 {
-			successMessage += fmt.Sprintf("\n\n⚠️ %d tweets were skipped (missing parent tweets)", result.SkippedTweets)
-		}
-
-		t.SendMessage(chatID, successMessage)
-	}()
-}
-
 func (t *TelegramService) handleHelpCommand(chatID int64) {
 	helpMessage := `🤖 <b>FUD Detection Bot - Available Commands</b>
 
@@ -1165,10 +1117,6 @@ func (t *TelegramService) handleHelpCommand(chatID int64) {
 
 • <code>/detail_&lt;id&gt;</code> - View detailed FUD analysis
   (ID provided in alert notifications)
-
-📁 <b>Data Management Commands:</b>
-• <code>/import &lt;csv_file&gt;</code> - Import tweets from CSV file
-  Example: /import community_tweets.csv
 
 📊 <b>Analysis Management:</b>
 • <code>/fudlist</code> - Show all detected FUD users
