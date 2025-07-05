@@ -129,18 +129,9 @@ func main() {
 		}
 	}
 
-	// Initialize notification users manager
-	notificationUsers := NewNotificationUsersManager("notification_users.txt")
-	err = notificationUsers.LoadUsers(os.Getenv(ENV_NOTIFICATION_USERS))
-	if err != nil {
-		log.Printf("Warning: Failed to load notification users: %v", err)
-	} else {
-		log.Printf("Loaded %d notification users", notificationUsers.GetUserCount())
-	}
-
 	fudChannel := make(chan twitterapi.NewMessage, 30)
 
-	telegramService, err := NewTelegramService(os.Getenv(ENV_TELEGRAM_API_KEY), os.Getenv(ENV_PROXY_DSN), os.Getenv(ENV_TELEGRAM_ADMIN_CHAT_ID), notificationFormatter, dbService, fudChannel, notificationUsers)
+	telegramService, err := NewTelegramService(os.Getenv(ENV_TELEGRAM_API_KEY), os.Getenv(ENV_PROXY_DSN), os.Getenv(ENV_TELEGRAM_ADMIN_CHAT_ID), notificationFormatter, dbService, fudChannel)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to initialize telegram service: %v", err))
 	}

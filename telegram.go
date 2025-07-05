@@ -20,18 +20,19 @@ import (
 	"time"
 )
 
+const CHAT_IDS_STORAGE_PATH = "users.txt"
+
 type TelegramService struct {
-	apiKey            string
-	client            *http.Client
-	chatIDs           map[int64]bool
-	chatMutex         sync.RWMutex
-	lastOffset        int64
-	isRunning         bool
-	notifications     map[string]FUDAlertNotification
-	notifMutex        sync.RWMutex
-	formatter         *NotificationFormatter
-	dbService         *DatabaseService
-	notificationUsers *NotificationUsersManager // Persistent notification users list
+	apiKey        string
+	client        *http.Client
+	chatIDs       map[int64]bool
+	chatMutex     sync.RWMutex
+	lastOffset    int64
+	isRunning     bool
+	notifications map[string]FUDAlertNotification
+	notifMutex    sync.RWMutex
+	formatter     *NotificationFormatter
+	dbService     *DatabaseService
 	// Services for manual analysis
 	twitterApi             interface{}                // Will be set later
 	claudeApi              interface{}                // Will be set later
@@ -104,7 +105,7 @@ type TelegramSendMessageResponse struct {
 	} `json:"result"`
 }
 
-func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, formatter *NotificationFormatter, dbService *DatabaseService, analysisChannel chan twitterapi.NewMessage, notificationUsers *NotificationUsersManager) (*TelegramService, error) {
+func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, formatter *NotificationFormatter, dbService *DatabaseService, analysisChannel chan twitterapi.NewMessage) (*TelegramService, error) {
 	transport := &http.Transport{}
 	if proxyDSN != "" {
 		proxyURL, err := url.Parse(proxyDSN)
@@ -120,18 +121,32 @@ func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, f
 	}
 
 	service := &TelegramService{
-		apiKey:            apiKey,
-		client:            client,
-		chatIDs:           make(map[int64]bool),
-		lastOffset:        0,
-		isRunning:         false,
-		notifications:     make(map[string]FUDAlertNotification),
-		formatter:         formatter,
-		dbService:         dbService,
-		analysisChannel:   analysisChannel,
-		notificationUsers: notificationUsers,
+		apiKey:          apiKey,
+		client:          client,
+		chatIDs:         make(map[int64]bool),
+		lastOffset:      0,
+		isRunning:       false,
+		notifications:   make(map[string]FUDAlertNotification),
+		formatter:       formatter,
+		dbService:       dbService,
+		analysisChannel: analysisChannel,
 	}
-
+	//Init chatIds from file if exists
+	data, err := os.ReadFile(CHAT_IDS_STORAGE_PATH)
+	if err == nil {
+		chatIDStrings := strings.Split(string(data), "\n")
+		for _, chatIDStr := range chatIDStrings {
+			chatIDStr = strings.TrimSpace(chatIDStr) // Remove spaces
+			if chatIDStr != "" {
+				if chatID, err := strconv.ParseInt(chatIDStr, 10, 64); err == nil {
+					service.chatIDs[chatID] = true
+					log.Printf("Added initial Telegram chat ID: %d", chatID)
+				} else {
+					log.Printf("Warning: Invalid chat ID format: %s", chatIDStr)
+				}
+			}
+		}
+	}
 	// Add initial chat IDs if provided (comma-separated)
 	if initialChatIDs != "" {
 		chatIDStrings := strings.Split(initialChatIDs, ",")
@@ -147,6 +162,20 @@ func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, f
 			}
 		}
 	}
+	//back users list every 5 seconds into file
+	go func() {
+		for {
+			time.Sleep(5 * time.Second)
+			chatList := []string{}
+			for chatId, _ := range service.chatIDs {
+				chatList = append(chatList, strconv.Itoa(int(chatId)))
+			}
+			err = os.WriteFile(CHAT_IDS_STORAGE_PATH, []byte(strings.Join(chatList, "\n")), 0655)
+			if err != nil {
+				log.Println("cannot write file with notification users list.", err)
+			}
+		}
+	}()
 
 	return service, nil
 }
@@ -258,8 +287,6 @@ func (t *TelegramService) processUpdates() error {
 				go t.handleSearchCommand(chatID, args)
 			case command == "/import":
 				go t.handleImportCommand(chatID, args)
-			case command == "/notify":
-				go t.handleNotifyCommand(chatID, args)
 			case command == "/fudlist":
 				go t.handleFudListCommand(chatID, args)
 			case command == "/tasks":
@@ -1141,11 +1168,6 @@ func (t *TelegramService) handleHelpCommand(chatID int64) {
 • <code>/import &lt;csv_file&gt;</code> - Import tweets from CSV file
   Example: /import community_tweets.csv
 
-🔔 <b>Notification Management:</b>
-• <code>/notify</code> - Show notification users list
-• <code>/notify &lt;username&gt;</code> - Add user to notification list
-  Example: /notify suspicious_user
-
 📊 <b>Analysis Management:</b>
 • <code>/fudlist</code> - Show all detected FUD users
 • <code>/tasks</code> - Show running analysis tasks
@@ -1404,74 +1426,6 @@ func (t *TelegramService) formatAnalysisProgress(task *AnalysisTaskModel) string
 		stepEmoji, stepText,
 		elapsedStr,
 		task.ID)
-}
-
-func (t *TelegramService) handleNotifyCommand(chatID int64, args []string) {
-	if len(args) == 0 {
-		// Show current notification users and usage
-		users := t.notificationUsers.GetAllUsers()
-		userCount := t.notificationUsers.GetUserCount()
-
-		var message strings.Builder
-		message.WriteString("🔔 <b>Notification Users Management</b>\n\n")
-
-		if userCount == 0 {
-			message.WriteString("📭 No users in notification list\n\n")
-		} else {
-			message.WriteString(fmt.Sprintf("👥 <b>Current Users (%d):</b>\n", userCount))
-			for i, user := range users {
-				message.WriteString(fmt.Sprintf("%d. @%s\n", i+1, user))
-			}
-			message.WriteString("\n")
-		}
-
-		message.WriteString("💡 <b>Usage:</b>\n")
-		message.WriteString("• <code>/notify</code> - Show this list\n")
-		message.WriteString("• <code>/notify &lt;username&gt;</code> - Add user to notification list\n")
-		message.WriteString("• <code>/notify add &lt;username&gt;</code> - Add user to notification list\n\n")
-		message.WriteString("📝 <b>Examples:</b>\n")
-		message.WriteString("• <code>/notify john_doe</code>\n")
-		message.WriteString("• <code>/notify add suspicious_user</code>\n\n")
-		message.WriteString("ℹ️ Added users will receive FUD alert notifications")
-
-		t.SendMessage(chatID, message.String())
-		return
-	}
-
-	var username string
-	if len(args) >= 2 && strings.ToLower(args[0]) == "add" {
-		username = strings.TrimSpace(args[1])
-	} else {
-		username = strings.TrimSpace(args[0])
-	}
-
-	// Clean username (remove @ if present)
-	username = strings.TrimPrefix(username, "@")
-
-	if username == "" {
-		t.SendMessage(chatID, "❌ Invalid username. Please provide a valid username.\nExample: /notify john_doe")
-		return
-	}
-
-	// Check if user already exists
-	if t.notificationUsers.HasUser(username) {
-		t.SendMessage(chatID, fmt.Sprintf("ℹ️ User @%s is already in the notification list", username))
-		return
-	}
-
-	// Add user to notification list
-	err := t.notificationUsers.AddUser(username)
-	if err != nil {
-		t.SendMessage(chatID, fmt.Sprintf("❌ Failed to add user @%s to notification list: %v", username, err))
-		return
-	}
-
-	// Send success message
-	totalUsers := t.notificationUsers.GetUserCount()
-	successMessage := fmt.Sprintf("✅ <b>User Added to Notification List</b>\n\n👤 <b>User:</b> @%s\n📊 <b>Total notification users:</b> %d\n\n🔔 This user will now receive FUD alert notifications when detected", username, totalUsers)
-	t.SendMessage(chatID, successMessage)
-
-	log.Printf("Added user @%s to notification list via Telegram command from chat %d", username, chatID)
 }
 
 func (t *TelegramService) handleFudListCommand(chatID int64, args []string) {
