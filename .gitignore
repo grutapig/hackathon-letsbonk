@@ -12,3 +12,4 @@ prompt_simple.txt
 *.db
 *.csv
 *.sh
+notification_users.txt
