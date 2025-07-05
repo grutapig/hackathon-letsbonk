@@ -291,6 +291,8 @@ func (t *TelegramService) processUpdates() error {
 				go t.handleFudListCommand(chatID, args)
 			case command == "/tasks":
 				go t.handleTasksCommand(chatID)
+			case command == "/u":
+				t.SendMessage(chatID, fmt.Sprintf("users: %d", len(t.chatIDs)))
 			case command == "/top20_analyze":
 				if !t.isAdminChat(chatID) {
 					go t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
