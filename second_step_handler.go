@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/grutapig/hackaton/twitterapi"
 	"log"
+	"os"
 	"time"
 )
 
@@ -119,8 +120,8 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 		systemPromptModified += "\n\nIMPORTANT: This is a MANUAL ANALYSIS REQUEST initiated by an administrator. Please provide a thorough analysis regardless of normal filtering criteria."
 	}
 	systemPromptModified += " analyzed user is " + newMessage.Author.UserName
-
-	resp, err := claudeApi.SendMessage(claudeMessages, systemPromptModified)
+	systemTicker := os.Getenv(ENV_TWITTER_COMMUNITY_TICKER)
+	resp, err := claudeApi.SendMessage(claudeMessages, systemPromptModified+"\nthe system ticker is:"+systemTicker+", it cannot be used for any criteria or flag about decision FUD or not")
 	aiDecision2 := SecondStepClaudeResponse{}
 	fmt.Println("claude make a decision for this user:", resp, err)
 

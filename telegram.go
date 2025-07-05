@@ -281,8 +281,8 @@ func (t *TelegramService) processUpdates() error {
 				go t.handleTickerHistoryCommand(chatID, text)
 			case strings.HasPrefix(command, "/cache_"):
 				go t.handleCacheCommand(chatID, text)
-			case command == "/analyze":
-				go t.handleAnalyzeCommand(chatID, args)
+			case strings.HasPrefix(command, "/analyze_"):
+				go t.handleAnalyzeCommand(chatID, text)
 			case command == "/search":
 				go t.handleSearchCommand(chatID, args)
 			case command == "/fudlist":
@@ -831,7 +831,7 @@ func (t *TelegramService) handleCacheCommand(chatID int64, command string) {
 	message.WriteString(fmt.Sprintf("• /history_%s - Message history\n", user.Username))
 	message.WriteString(fmt.Sprintf("• /ticker_history_%s - Ticker posts\n", user.Username))
 	message.WriteString(fmt.Sprintf("• /export_%s - Full export\n", user.Username))
-	message.WriteString(fmt.Sprintf("• /analyze %s - Force new analysis\n", user.Username))
+	message.WriteString(fmt.Sprintf("• /analyze_%s - Force new analysis\n", user.Username))
 
 	t.SendMessage(chatID, message.String())
 }
@@ -1039,22 +1039,27 @@ func (t *TelegramService) handleSearchCommand(chatID int64, args []string) {
 		searchResults.WriteString(fmt.Sprintf("    ID: <code>%s</code>\n", user.ID))
 
 		// Add quick action commands
-		searchResults.WriteString(fmt.Sprintf("    Commands: /history_%s | /analyze %s\n\n", user.Username, user.Username))
+		searchResults.WriteString(fmt.Sprintf("    Commands: /history_%s | /analyze_%s\n\n", user.Username, user.Username))
 	}
 
 	// Add note about commands
-	searchResults.WriteString("💡 <b>Quick Actions:</b>\n• Tap /history_username to view recent messages\n• Tap /analyze username to run second step analysis")
+	searchResults.WriteString("💡 <b>Quick Actions:</b>\n• Tap /history_<username> to view recent messages\n• Tap /analyze_<username> to run second step analysis")
 
 	t.SendMessage(chatID, searchResults.String())
 }
 
-func (t *TelegramService) handleAnalyzeCommand(chatID int64, args []string) {
-	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-		t.SendMessage(chatID, "❌ Invalid command format. Use /analyze <username>\nExample: /analyze suspicious_user")
+func (t *TelegramService) handleAnalyzeCommand(chatID int64, command string) {
+	prefix := "/analyze_"
+	if !strings.HasPrefix(command, prefix) {
+		t.SendMessage(chatID, "❌ Invalid command format. Use /cache_<username_or_id>")
 		return
 	}
 
-	username := strings.TrimSpace(args[0])
+	username := strings.TrimPrefix(command, prefix)
+	if username == "" {
+		t.SendMessage(chatID, "❌ Please provide username or user ID. Use /cache_<username_or_id>")
+		return
+	}
 
 	// Generate unique task ID
 	taskID := t.generateNotificationID()
@@ -1099,8 +1104,8 @@ func (t *TelegramService) handleHelpCommand(chatID int64) {
 • <code>/search [query]</code> - Search users by username/name
   Example: /search john or /search (shows top 10 active users)
 
-• <code>/analyze &lt;username&gt;</code> - Run manual FUD analysis
-  Example: /analyze suspicious_user
+• <code>/analyze_&lt;username&gt;</code> - Run manual FUD analysis
+  Example: /analyze_suspicious_user
 
 📊 <b>User Investigation Commands:</b>
 • <code>/history_&lt;username&gt;</code> - View recent messages (20 latest)
@@ -1542,7 +1547,7 @@ func (t *TelegramService) handleTasksCommand(chatID int64) {
 		message.WriteString(fmt.Sprintf("    🆔 Task ID: <code>%s</code>\n\n", task.ID))
 	}
 
-	message.WriteString("💡 Use <code>/analyze &lt;username&gt;</code> to start new analysis")
+	message.WriteString("💡 Use <code>/analyze_&lt;username&gt;</code> to start new analysis")
 
 	t.SendMessage(chatID, message.String())
 }
@@ -1886,7 +1891,7 @@ func (t *TelegramService) sendCachedBatchNotification(username, userID string, c
 👥 <b>Profile:</b> %s
 
 💾 <b>Source:</b> Cached analysis (< 24h)
-🔍 <b>Commands:</b> /history_%s | /analyze %s`,
+🔍 <b>Commands:</b> /history_%s | /analyze_%s`,
 		severityEmoji,
 		username,
 		map[bool]string{true: "FUD User Detected", false: "Clean User"}[cachedResult.IsFUDUser],

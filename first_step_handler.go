@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/grutapig/hackaton/twitterapi"
 	"log"
+	"os"
 	"time"
 )
 
@@ -35,8 +36,8 @@ func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan t
 
 			messages = append(messages, ClaudeMessage{ROLE_USER, "user reply being analyzed: " + newMessage.Author.UserName + ":" + newMessage.Text})
 			messages = append(messages, ClaudeMessage{ROLE_ASSISTANT, "{"})
-
-			resp, err := claudeApi.SendMessage(messages, fmt.Sprintf("%s\n<instruction>you must analyze %s user messages in the context of the full thread</instruction> \n this is a FUD user. be more attention for his message and his answers.", string(systemPromptFirstStep), newMessage.Author.UserName))
+			systemTicker := os.Getenv(ENV_TWITTER_COMMUNITY_TICKER)
+			resp, err := claudeApi.SendMessage(messages, fmt.Sprintf("%s\n<instruction>you must analyze %s user messages in the context of the full thread</instruction> \n this is a FUD user. be more attention for his message and his answers."+"\nthe system ticker is:"+systemTicker+", it cannot be used for any criteria or flag about decision FUD or not", string(systemPromptFirstStep), newMessage.Author.UserName))
 			if err != nil {
 				log.Printf("error claude quick analysis: %s", err)
 				continue
