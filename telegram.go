@@ -281,6 +281,13 @@ func (t *TelegramService) processUpdates() error {
 				go t.handleTickerHistoryCommand(chatID, text)
 			case strings.HasPrefix(command, "/cache_"):
 				go t.handleCacheCommand(chatID, text)
+			case command == "/analyze_all":
+				if !t.isAdminChat(chatID) {
+					go t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
+					continue
+				}
+				go t.handleAnalyzeAllCommand(chatID)
+				continue
 			case strings.HasPrefix(command, "/analyze_"):
 				go t.handleAnalyzeCommand(chatID, text)
 			case command == "/search":
@@ -299,12 +306,6 @@ func (t *TelegramService) processUpdates() error {
 				go t.handleTop20AnalyzeCommand(chatID)
 			case command == "/batch_analyze":
 				go t.handleBatchAnalyzeCommand(chatID, args)
-			case command == "/analyze_all":
-				if !t.isAdminChat(chatID) {
-					go t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
-					continue
-				}
-				go t.handleAnalyzeAllCommand(chatID)
 			case command == "/help" || command == "/start":
 				go t.handleHelpCommand(chatID)
 			default:
@@ -634,7 +635,7 @@ func (t *TelegramService) handleHistoryCommand(chatID int64, command string) {
 	// Extract username from command "/history_username"
 	prefix := "/history_"
 	if !strings.HasPrefix(command, prefix) {
-		t.SendMessage(chatID, "❌ Invalid command format. Use /history_<username>")
+		t.SendMessage(chatID, "❌ Invalid command format. Use /history_username")
 		return
 	}
 
@@ -675,7 +676,7 @@ func (t *TelegramService) handleTickerHistoryCommand(chatID int64, command strin
 	// Extract username from command "/ticker_history_username"
 	prefix := "/ticker_history_"
 	if !strings.HasPrefix(command, prefix) {
-		t.SendMessage(chatID, "❌ Invalid command format. Use /ticker_history_<username>")
+		t.SendMessage(chatID, "❌ Invalid command format. Use /ticker_history_username")
 		return
 	}
 
@@ -900,7 +901,7 @@ func (t *TelegramService) handleExportCommand(chatID int64, command string) {
 	// Extract username from command "/export_username"
 	prefix := "/export_"
 	if !strings.HasPrefix(command, prefix) {
-		t.SendMessage(chatID, "❌ Invalid command format. Use /export_<username>")
+		t.SendMessage(chatID, "❌ Invalid command format. Use /export_username")
 		return
 	}
 
@@ -1043,7 +1044,7 @@ func (t *TelegramService) handleSearchCommand(chatID int64, args []string) {
 	}
 
 	// Add note about commands
-	searchResults.WriteString("💡 <b>Quick Actions:</b>\n• Tap /history_<username> to view recent messages\n• Tap /analyze_<username> to run second step analysis")
+	searchResults.WriteString("💡 <b>Quick Actions:</b>\n• Tap /history_username to view recent messages\n• Tap /analyze_username to run second step analysis")
 
 	t.SendMessage(chatID, searchResults.String())
 }
