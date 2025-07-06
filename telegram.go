@@ -292,8 +292,12 @@ func (t *TelegramService) processUpdates() error {
 				go t.handleAnalyzeCommand(chatID, text)
 			case command == "/search":
 				go t.handleSearchCommand(chatID, args)
-			case command == "/fudlist":
-				go t.handleFudListCommand(chatID, args)
+			case command == "/fudlist" || strings.HasPrefix(command, "/fudlist_"):
+				go t.handleFudListCommand(chatID, args, command)
+			case command == "/exportfudlist":
+				go t.handleExportFudListCommand(chatID)
+			case command == "/topfud" || strings.HasPrefix(command, "/topfud_"):
+				go t.handleTopFudCommand(chatID, args, command)
 			case command == "/tasks":
 				go t.handleTasksCommand(chatID)
 			case command == "/u":
@@ -1108,41 +1112,32 @@ func (t *TelegramService) handleHelpCommand(chatID int64) {
 	helpMessage := `🤖 <b>FUD Detection Bot - Available Commands</b>
 
 🔍 <b>Search & Analysis Commands:</b>
-• <code>/search [query]</code> - Search users by username/name
-  Example: /search john or /search (shows top 10 active users)
-
-• <code>/analyze_&lt;username&gt;</code> - Run manual FUD analysis
-  Example: /analyze_suspicious_user
+• /search - Search users by username/name
+• /analyze_username - Run manual FUD analysis
 
 📊 <b>User Investigation Commands:</b>
-• <code>/history_&lt;username&gt;</code> - View recent messages (20 latest)
-  Example: /history_john_doe
-
-• <code>/ticker_history_&lt;username&gt;</code> - View ticker-related messages
-  Example: /ticker_history_john_doe
-
-• <code>/cache_&lt;username_or_id&gt;</code> - View cached analysis results
-  Example: /cache_john_doe or /cache_1234567890
-
-• <code>/export_&lt;username&gt;</code> - Export full message history as file
-  Example: /export_john_doe
-
-• <code>/detail_&lt;id&gt;</code> - View detailed FUD analysis
-  (ID provided in alert notifications)
+• /history_username - View recent messages (20 latest)
+• /ticker_history_username - View ticker-related messages
+• /cache_username - View cached analysis results
+• /export_username - Export full message history as file
+• /detail_id - View detailed FUD analysis
 
 📊 <b>Analysis Management:</b>
-• <code>/fudlist</code> - Show all detected FUD users
-• <code>/tasks</code> - Show running analysis tasks
-• <code>/batch_analyze &lt;user1,user2,user3&gt;</code> - Analyze multiple users
-• <code>/top20_analyze</code> - Analyze top 20 most active users (admin only)
-• <code>/analyze_all</code> - Analyze ALL users with messages (admin only)
+• /fudlist - Show all detected FUD users
+• /topfud - Show cached FUD users sorted by last message
+• /exportfudlist - Export FUD usernames as comma-separated list
+• /tasks - Show running analysis tasks
+• /batch_analyze user1,user2,user3 - Analyze multiple users
+• /top20_analyze - Analyze top 20 most active users (admin only)
+• /analyze_all - Analyze ALL users with messages (admin only)
 
 ❓ <b>Help Commands:</b>
-• <code>/help</code> or <code>/start</code> - Show this help message
+• /help - Show this help message
+• /start - Show this help message
 
 💡 <b>Usage Tips:</b>
-• Commands with underscore (_) need exact format
-• Commands with space accept parameters
+• Commands with underscore (_) need exact format: /analyze_john
+• Commands with space accept parameters: /search john
 • All commands are case-sensitive
 • Bot responds to FUD alerts automatically
 
@@ -1152,7 +1147,7 @@ func (t *TelegramService) handleHelpCommand(chatID int64) {
 • ⚠️ Medium - Standard monitoring
 • ℹ️ Low - Log and watch
 
-👤 <b>Your Chat ID:</b> <code>%d</code>`
+👤 <b>Your Chat ID:</b> %d`
 
 	t.SendMessage(chatID, fmt.Sprintf(helpMessage, chatID))
 }
@@ -1390,10 +1385,18 @@ func (t *TelegramService) formatAnalysisProgress(task *AnalysisTaskModel) string
 		task.ID)
 }
 
-func (t *TelegramService) handleFudListCommand(chatID int64, args []string) {
-	// Parse page number from arguments
+func (t *TelegramService) handleFudListCommand(chatID int64, args []string, command string) {
+	// Parse page number from command or arguments
 	page := 1
-	if len(args) > 0 {
+
+	// Check if page number is in command format /fudlist_X
+	if strings.HasPrefix(command, "/fudlist_") {
+		pageStr := strings.TrimPrefix(command, "/fudlist_")
+		if pageNum, err := strconv.Atoi(pageStr); err == nil && pageNum > 0 {
+			page = pageNum
+		}
+	} else if len(args) > 0 {
+		// Fallback to old format with arguments
 		if pageNum, err := strconv.Atoi(args[0]); err == nil && pageNum > 0 {
 			page = pageNum
 		}
@@ -1450,9 +1453,25 @@ func (t *TelegramService) handleFudListCommand(chatID int64, args []string) {
 			sourceEmoji = "💾"
 		}
 
-		message.WriteString(fmt.Sprintf("<b>%d.</b> %s @%s (%s)\n", i+1, sourceEmoji, username, userID))
+		// Get last message info
+		lastMessageDate := user["last_message_date"].(time.Time)
+		isAlive := user["is_alive"].(bool)
+		status := user["status"].(string)
+
+		statusEmoji := "💀"
+		if isAlive {
+			statusEmoji = "🟢"
+		}
+
+		message.WriteString(fmt.Sprintf("<b>%d.</b> %s @%s (%s) %s %s\n", i+1, sourceEmoji, username, userID, statusEmoji, status))
 		message.WriteString(fmt.Sprintf("    🎯 Type: %s (%.0f%%)\n", fudType, probability*100))
 		message.WriteString(fmt.Sprintf("    📅 Detected: %s\n", detectedAt.Format("2006-01-02 15:04")))
+
+		if !lastMessageDate.IsZero() {
+			message.WriteString(fmt.Sprintf("    💬 Last msg: %s\n", lastMessageDate.Format("2006-01-02 15:04")))
+		} else {
+			message.WriteString("    💬 Last msg: unknown\n")
+		}
 
 		if userSummary, ok := user["user_summary"].(string); ok && userSummary != "" {
 			message.WriteString(fmt.Sprintf("    👤 Profile: %s\n", userSummary))
@@ -1471,10 +1490,10 @@ func (t *TelegramService) handleFudListCommand(chatID int64, args []string) {
 	if totalPages > 1 {
 		message.WriteString("📄 <b>Navigation:</b>\n")
 		if page > 1 {
-			message.WriteString(fmt.Sprintf("  ⬅️ /fudlist %d (Previous)\n", page-1))
+			message.WriteString(fmt.Sprintf("  ⬅️ /fudlist_%d (Previous)\n", page-1))
 		}
 		if page < totalPages {
-			message.WriteString(fmt.Sprintf("  ➡️ /fudlist %d (Next)\n", page+1))
+			message.WriteString(fmt.Sprintf("  ➡️ /fudlist_%d (Next)\n", page+1))
 		}
 		message.WriteString("\n")
 	}
@@ -1491,24 +1510,184 @@ func (t *TelegramService) handleFudListCommand(chatID int64, args []string) {
 		}
 	}
 
-	message.WriteString(fmt.Sprintf("📊 <b>Summary:</b>\n• 🔥 Active FUD users: %d\n• 💾 Cached detections: %d\n\n", totalActiveFUD, totalCachedFUD))
-	message.WriteString("💡 <b>Legend:</b>\n• 🔥 Active (persistent in database)\n• 💾 Cached (expires in 24h)")
+	// Count alive and dead users
+	aliveCount := 0
+	deadCount := 0
+	for _, user := range fudUsers {
+		if user["is_alive"].(bool) {
+			aliveCount++
+		} else {
+			deadCount++
+		}
+	}
+
+	message.WriteString(fmt.Sprintf("📊 <b>Summary:</b>\n• 🔥 Active FUD users: %d\n• 💾 Cached detections: %d\n• 🟢 Alive users: %d\n• 💀 Dead users: %d\n\n", totalActiveFUD, totalCachedFUD, aliveCount, deadCount))
+	message.WriteString("💡 <b>Legend:</b>\n• 🔥 Active (persistent in database)\n• 💾 Cached (expires in 24h)\n• 🟢 Alive (active within 30 days)\n• 💀 Dead (no activity >30 days)")
 
 	if totalPages > 1 {
-		message.WriteString(fmt.Sprintf("\n\n📖 Use <code>/fudlist [page]</code> to navigate\nExample: <code>/fudlist 2</code>"))
+		message.WriteString(fmt.Sprintf("\n\n📖 Use <code>/fudlist_[page]</code> to navigate\nExample: <code>/fudlist_2</code>"))
+	}
+
+	t.SendMessage(chatID, message.String())
+}
+
+func (t *TelegramService) handleExportFudListCommand(chatID int64) {
+	fudUsers, err := t.dbService.GetAllFUDUsersFromCache()
+	if err != nil {
+		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving FUD users: %v", err))
+		return
+	}
+
+	if len(fudUsers) == 0 {
+		t.SendMessage(chatID, "✅ No FUD users detected")
+		return
+	}
+
+	// Collect usernames without @ symbol
+	var usernames []string
+	for _, user := range fudUsers {
+		username := user["username"].(string)
+		usernames = append(usernames, username)
+	}
+
+	// Join with commas
+	exportText := strings.Join(usernames, ", ")
+
+	message := fmt.Sprintf("📋 <b>FUD Users Export (%d total)</b>\n\n<code>%s</code>", len(fudUsers), exportText)
+
+	t.SendMessage(chatID, message)
+}
+
+func (t *TelegramService) handleTopFudCommand(chatID int64, args []string, command string) {
+	log.Printf("🔍 TopFud command started - chatID: %d, command: %s", chatID, command)
+	t.SendMessage(chatID, "🔄 Starting TopFud analysis...")
+
+	// Parse page number from command or arguments
+	page := 1
+
+	// Check if page number is in command format /topfud_X
+	if strings.HasPrefix(command, "/topfud_") {
+		pageStr := strings.TrimPrefix(command, "/topfud_")
+		if pageNum, err := strconv.Atoi(pageStr); err == nil && pageNum > 0 {
+			page = pageNum
+		}
+		log.Printf("📄 Page number from command: %d", page)
+	} else if len(args) > 0 {
+		// Fallback to old format with arguments
+		if pageNum, err := strconv.Atoi(args[0]); err == nil && pageNum > 0 {
+			page = pageNum
+		}
+		log.Printf("📄 Page number from args: %d", page)
+	}
+
+	const pageSize = 10 // Users per page
+
+	log.Printf("🔍 Calling GetActiveFUDUsersSortedByLastMessage...")
+	t.SendMessage(chatID, "🔍 Querying database for FUD users...")
+
+	fudUsers, err := t.dbService.GetActiveFUDUsersSortedByLastMessage()
+	if err != nil {
+		log.Printf("❌ Error retrieving active FUD users: %v", err)
+		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving active FUD users: %v", err))
+		return
+	}
+
+	log.Printf("📊 Found %d FUD users from cache", len(fudUsers))
+	t.SendMessage(chatID, fmt.Sprintf("📊 Found %d FUD users in cache", len(fudUsers)))
+
+	if len(fudUsers) == 0 {
+		t.SendMessage(chatID, "✅ <b>No Active FUD Users Found</b>\n\n🎉 Great news! No active FUD users have been detected in the cache.")
+		return
+	}
+
+	log.Printf("📊 Preparing to display results...")
+	t.SendMessage(chatID, "📊 Preparing results display...")
+
+	totalPages := (len(fudUsers) + pageSize - 1) / pageSize
+	if page > totalPages {
+		page = totalPages
+	}
+
+	startIdx := (page - 1) * pageSize
+	endIdx := startIdx + pageSize
+	if endIdx > len(fudUsers) {
+		endIdx = len(fudUsers)
+	}
+
+	log.Printf("📄 Page info: %d/%d, showing users %d-%d", page, totalPages, startIdx+1, endIdx)
+
+	var message strings.Builder
+
+	aliveCount := 0
+	deadCount := 0
+
+	// Show users for current page
+	for i := startIdx; i < endIdx; i++ {
+		user := fudUsers[i]
+
+		username := user["username"].(string)
+		userID := user["user_id"].(string)
+		lastMessageDate := user["last_message_date"].(time.Time)
+		isAlive := user["is_alive"].(bool)
+		status := user["status"].(string)
+
+		if isAlive {
+			aliveCount++
+		} else {
+			deadCount++
+		}
+
+		statusEmoji := "💀"
+		if isAlive {
+			statusEmoji = "🟢"
+		}
+
+		message.WriteString(fmt.Sprintf("<b>%d.</b> 💾 @%s (%s) %s %s\n", i+1, username, userID, statusEmoji, status))
+
+		if !lastMessageDate.IsZero() {
+			message.WriteString(fmt.Sprintf("    💬 Last msg: %s\n", lastMessageDate.Format("2006-01-02 15:04")))
+		} else {
+			message.WriteString("    💬 Last msg: unknown\n")
+		}
+
+		// Add enhanced command links
+		message.WriteString(fmt.Sprintf("      https://x.com/%s\n", username))
+		message.WriteString("\n")
+	}
+
+	// Add pagination controls
+	if totalPages > 1 {
+		message.WriteString("📄 <b>Navigation:</b>\n")
+		if page > 1 {
+			message.WriteString(fmt.Sprintf("  ⬅️ /topfud_%d (Previous)\n", page-1))
+		}
+		if page < totalPages {
+			message.WriteString(fmt.Sprintf("  ➡️ /topfud_%d (Next)\n", page+1))
+		}
+		message.WriteString("\n")
+	}
+
+	if totalPages > 1 {
+		message.WriteString(fmt.Sprintf("\n\n📖 Use <code>/topfud_[page]</code> to navigate\nExample: <code>/topfud_2</code>"))
 	}
 
 	t.SendMessage(chatID, message.String())
 }
 
 func (t *TelegramService) handleTasksCommand(chatID int64) {
+	log.Printf("📋 Tasks command started for chatID: %d", chatID)
+
 	tasks, err := t.dbService.GetAllRunningAnalysisTasks()
 	if err != nil {
+		log.Printf("❌ Error retrieving analysis tasks: %v", err)
 		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving analysis tasks: %v", err))
 		return
 	}
 
+	log.Printf("📊 Found %d running analysis tasks", len(tasks))
+
 	if len(tasks) == 0 {
+		log.Printf("✅ No running tasks, sending empty message")
 		t.SendMessage(chatID, "✅ <b>No Running Analysis Tasks</b>\n\n🎯 All analysis tasks have been completed.")
 		return
 	}
@@ -1516,7 +1695,19 @@ func (t *TelegramService) handleTasksCommand(chatID int64) {
 	var message strings.Builder
 	message.WriteString(fmt.Sprintf("🔄 <b>Running Analysis Tasks (%d total)</b>\n\n", len(tasks)))
 
+	// Limit to first 20 tasks to avoid message being too long
+	maxTasks := 20
+	if len(tasks) > maxTasks {
+		message.WriteString(fmt.Sprintf("📄 <i>Showing first %d tasks</i>\n\n", maxTasks))
+	}
+
 	for i, task := range tasks {
+		// Limit number of tasks to prevent message being too long
+		if i >= maxTasks {
+			message.WriteString(fmt.Sprintf("... and %d more tasks\n\n", len(tasks)-maxTasks))
+			break
+		}
+
 		statusEmoji := "⏳"
 		if task.Status == ANALYSIS_STATUS_RUNNING {
 			statusEmoji = "🔄"
@@ -1552,11 +1743,22 @@ func (t *TelegramService) handleTasksCommand(chatID int64) {
 		message.WriteString(fmt.Sprintf("    %s Step: %s\n", stepEmoji, task.ProgressText))
 		message.WriteString(fmt.Sprintf("    ⏱️ Running: %s\n", elapsedStr))
 		message.WriteString(fmt.Sprintf("    🆔 Task ID: <code>%s</code>\n\n", task.ID))
+
+		log.Printf("📋 Added task %d: %s (%s)", i+1, task.Username, task.CurrentStep)
 	}
 
 	message.WriteString("💡 Use <code>/analyze_&lt;username&gt;</code> to start new analysis")
 
-	t.SendMessage(chatID, message.String())
+	finalMessage := message.String()
+	log.Printf("📤 Sending tasks message with length: %d characters", len(finalMessage))
+
+	err = t.SendMessage(chatID, finalMessage)
+	if err != nil {
+		log.Printf("❌ Failed to send tasks message: %v", err)
+		t.SendMessage(chatID, "❌ Failed to send tasks list - message might be too long")
+	} else {
+		log.Printf("✅ Successfully sent tasks message")
+	}
 }
 
 func (t *TelegramService) handleTop20AnalyzeCommand(chatID int64) {
@@ -1724,7 +1926,7 @@ func (t *TelegramService) handleBatchAnalyzeCommand(chatID int64, args []string)
 		return
 	}
 
-	if len(validUsernames) > 20 {
+	if len(validUsernames) > 100 {
 		t.SendMessage(chatID, fmt.Sprintf("❌ Too many users requested (%d). Maximum limit is 20 users per batch.", len(validUsernames)))
 		return
 	}
@@ -1755,16 +1957,6 @@ func (t *TelegramService) handleBatchAnalyzeCommand(chatID int64, args []string)
 	for _, username := range validUsernames {
 		// Check if user already has recent cached analysis
 		user, err := t.dbService.GetUserByUsername(username)
-		if err == nil && t.dbService.HasValidCachedAnalysis(user.ID) {
-			log.Printf("Skipping user %s - has valid cached analysis", username)
-			skippedCount++
-
-			// Get cached result and send notification immediately
-			if cachedResult, err := t.dbService.GetCachedAnalysis(user.ID); err == nil {
-				go t.sendCachedBatchNotification(username, user.ID, *cachedResult, chatID)
-			}
-			continue
-		}
 
 		// Generate task ID for tracking
 		taskID := t.generateNotificationID()

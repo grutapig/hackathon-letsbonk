@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -699,21 +700,45 @@ func (s *DatabaseService) SaveCachedAnalysis(userID, username string, analysis S
 		}
 	}
 
-	cached := CachedAnalysisModel{
-		UserID:         userID,
-		Username:       username,
-		IsFUDUser:      analysis.IsFUDUser,
-		FUDType:        analysis.FUDType,
-		FUDProbability: analysis.FUDProbability,
-		UserRiskLevel:  analysis.UserRiskLevel,
-		UserSummary:    analysis.UserSummary,
-		KeyEvidence:    keyEvidenceJSON,
-		DecisionReason: analysis.DecisionReason,
-		AnalyzedAt:     time.Now(),
-		ExpiresAt:      time.Now().Add(24 * time.Hour), // 1 day expiration
-	}
+	// First try to find existing cached analysis for this user
+	var existing CachedAnalysisModel
+	err := s.db.Where("user_id = ?", userID).First(&existing).Error
 
-	return s.db.Save(&cached).Error
+	if err == nil {
+		// Update existing record
+		existing.Username = username
+		existing.IsFUDUser = analysis.IsFUDUser
+		existing.FUDType = analysis.FUDType
+		existing.FUDProbability = analysis.FUDProbability
+		existing.UserRiskLevel = analysis.UserRiskLevel
+		existing.UserSummary = analysis.UserSummary
+		existing.KeyEvidence = keyEvidenceJSON
+		existing.DecisionReason = analysis.DecisionReason
+		existing.AnalyzedAt = time.Now()
+		existing.ExpiresAt = time.Now().Add(24 * time.Hour)
+		existing.UpdatedAt = time.Now()
+
+		log.Printf("🔄 DB: Updating existing cached analysis for user %s (ID: %d)", username, existing.ID)
+		return s.db.Save(&existing).Error
+	} else {
+		// Create new record
+		cached := CachedAnalysisModel{
+			UserID:         userID,
+			Username:       username,
+			IsFUDUser:      analysis.IsFUDUser,
+			FUDType:        analysis.FUDType,
+			FUDProbability: analysis.FUDProbability,
+			UserRiskLevel:  analysis.UserRiskLevel,
+			UserSummary:    analysis.UserSummary,
+			KeyEvidence:    keyEvidenceJSON,
+			DecisionReason: analysis.DecisionReason,
+			AnalyzedAt:     time.Now(),
+			ExpiresAt:      time.Now().Add(24 * time.Hour),
+		}
+
+		log.Printf("✅ DB: Creating new cached analysis for user %s", username)
+		return s.db.Create(&cached).Error
+	}
 }
 
 // GetCachedAnalysis retrieves cached analysis if not expired
@@ -755,7 +780,7 @@ func (s *DatabaseService) CleanExpiredCache() error {
 	return s.db.Where("expires_at < ?", time.Now()).Delete(&CachedAnalysisModel{}).Error
 }
 
-// GetAllFUDUsersFromCache gets all FUD users from both active FUD table and cache
+// GetAllFUDUsersFromCache gets all FUD users from both active FUD table and cache with last message info
 func (s *DatabaseService) GetAllFUDUsersFromCache() ([]map[string]interface{}, error) {
 	var results []map[string]interface{}
 
@@ -767,15 +792,30 @@ func (s *DatabaseService) GetAllFUDUsersFromCache() ([]map[string]interface{}, e
 	}
 
 	for _, user := range fudUsers {
+		// Get last message for this user
+		var lastTweet TweetModel
+		lastMessageDate := time.Time{}
+		isAlive := false
+
+		err = s.db.Where("user_id = ?", user.UserID).Order("created_at DESC").First(&lastTweet).Error
+		if err == nil {
+			lastMessageDate = lastTweet.CreatedAt
+			// User is alive if last message was within 30 days
+			isAlive = time.Since(lastMessageDate) <= 30*24*time.Hour
+		}
+
 		results = append(results, map[string]interface{}{
-			"user_id":         user.UserID,
-			"username":        user.Username,
-			"fud_type":        user.FUDType,
-			"fud_probability": user.FUDProbability,
-			"detected_at":     user.DetectedAt,
-			"message_count":   user.MessageCount,
-			"last_message_id": user.LastMessageID,
-			"source":          "active",
+			"user_id":           user.UserID,
+			"username":          user.Username,
+			"fud_type":          user.FUDType,
+			"fud_probability":   user.FUDProbability,
+			"detected_at":       user.DetectedAt,
+			"message_count":     user.MessageCount,
+			"last_message_id":   user.LastMessageID,
+			"last_message_date": lastMessageDate,
+			"is_alive":          isAlive,
+			"status":            map[bool]string{true: "alive", false: "dead"}[isAlive],
+			"source":            "active",
 		})
 	}
 
@@ -795,20 +835,118 @@ func (s *DatabaseService) GetAllFUDUsersFromCache() ([]map[string]interface{}, e
 
 	for _, cached := range cachedFUD {
 		if !seenUsers[cached.UserID] {
+			// Get last message for this cached user
+			var lastTweet TweetModel
+			lastMessageDate := time.Time{}
+			isAlive := false
+
+			err = s.db.Where("user_id = ?", cached.UserID).Order("created_at DESC").First(&lastTweet).Error
+			if err == nil {
+				lastMessageDate = lastTweet.CreatedAt
+				// User is alive if last message was within 30 days
+				isAlive = time.Since(lastMessageDate) <= 30*24*time.Hour
+			}
+
 			results = append(results, map[string]interface{}{
-				"user_id":         cached.UserID,
-				"username":        cached.Username,
-				"fud_type":        cached.FUDType,
-				"fud_probability": cached.FUDProbability,
-				"detected_at":     cached.AnalyzedAt,
-				"message_count":   0,
-				"last_message_id": "",
-				"source":          "cached",
-				"user_summary":    cached.UserSummary,
-				"expires_at":      cached.ExpiresAt,
+				"user_id":           cached.UserID,
+				"username":          cached.Username,
+				"fud_type":          cached.FUDType,
+				"fud_probability":   cached.FUDProbability,
+				"detected_at":       cached.AnalyzedAt,
+				"message_count":     0,
+				"last_message_id":   "",
+				"last_message_date": lastMessageDate,
+				"is_alive":          isAlive,
+				"status":            map[bool]string{true: "alive", false: "dead"}[isAlive],
+				"source":            "cached",
+				"user_summary":      cached.UserSummary,
+				"expires_at":        cached.ExpiresAt,
 			})
 			seenUsers[cached.UserID] = true
 		}
+	}
+
+	return results, nil
+}
+
+// GetActiveFUDUsersSortedByLastMessage gets FUD users from cache sorted by last message date (most recent first)
+func (s *DatabaseService) GetActiveFUDUsersSortedByLastMessage() ([]map[string]interface{}, error) {
+	var results []map[string]interface{}
+
+	log.Printf("🔍 DB: Starting GetActiveFUDUsersSortedByLastMessage")
+
+	// Get from cached analysis (FUD users only)
+	var cachedFUD []CachedAnalysisModel
+	log.Printf("🔍 DB: Querying cached_analysis table for FUD users...")
+	err := s.db.Where("is_fud_user = ?", true).
+		Order("analyzed_at DESC").Find(&cachedFUD).Error
+	if err != nil {
+		log.Printf("❌ DB: Error querying cached_analysis: %v", err)
+		return nil, err
+	}
+
+	log.Printf("📊 DB: Found %d cached FUD users", len(cachedFUD))
+
+	// Process cached FUD users and add last message info
+	log.Printf("🔍 DB: Processing %d cached FUD users...", len(cachedFUD))
+	for i, cached := range cachedFUD {
+		log.Printf("🔍 DB: Processing user %d/%d: %s (ID: %s)", i+1, len(cachedFUD), cached.Username, cached.UserID)
+
+		// Get last message for this cached user
+		var lastTweet TweetModel
+		lastMessageDate := time.Time{}
+		isAlive := false
+
+		err = s.db.Where("user_id = ?", cached.UserID).Order("created_at DESC").First(&lastTweet).Error
+		if err == nil {
+			lastMessageDate = lastTweet.CreatedAt
+			// User is alive if last message was within 30 days
+			isAlive = time.Since(lastMessageDate) <= 30*24*time.Hour
+			log.Printf("✅ DB: Found last message for %s: %s (alive: %t)", cached.Username, lastMessageDate.Format("2006-01-02"), isAlive)
+		} else {
+			log.Printf("⚠️ DB: No messages found for user %s: %v", cached.Username, err)
+		}
+
+		results = append(results, map[string]interface{}{
+			"user_id":           cached.UserID,
+			"username":          cached.Username,
+			"fud_type":          cached.FUDType,
+			"fud_probability":   cached.FUDProbability,
+			"detected_at":       cached.AnalyzedAt,
+			"message_count":     0,
+			"last_message_id":   "",
+			"last_message_date": lastMessageDate,
+			"is_alive":          isAlive,
+			"status":            map[bool]string{true: "alive", false: "dead"}[isAlive],
+			"source":            "cached",
+			"user_summary":      cached.UserSummary,
+			"expires_at":        cached.ExpiresAt,
+		})
+	}
+
+	log.Printf("🔍 DB: Sorting %d results by last message date...", len(results))
+
+	// Sort by last message date (most recent first)
+	for i := 0; i < len(results); i++ {
+		for j := i + 1; j < len(results); j++ {
+			date1 := results[i]["last_message_date"].(time.Time)
+			date2 := results[j]["last_message_date"].(time.Time)
+			if date1.Before(date2) {
+				results[i], results[j] = results[j], results[i]
+			}
+		}
+	}
+
+	log.Printf("✅ DB: Completed GetActiveFUDUsersSortedByLastMessage with %d results", len(results))
+
+	// Log first few results for debugging
+	for i, result := range results {
+		if i >= 3 { // Only log first 3 results
+			break
+		}
+		username := result["username"].(string)
+		lastMsg := result["last_message_date"].(time.Time)
+		log.Printf("📊 DB: Result %d: %s - last msg: %s", i+1, username, lastMsg.Format("2006-01-02 15:04"))
 	}
 
 	return results, nil
