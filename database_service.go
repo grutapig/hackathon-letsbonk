@@ -203,6 +203,15 @@ func (s *DatabaseService) DeleteFUDUser(userID string) error {
 	return s.db.Delete(&FUDUserModel{}, "user_id = ?", userID).Error
 }
 
+// UpdateUserFUDStatus updates user's FUD status in the users table
+func (s *DatabaseService) UpdateUserFUDStatus(userID string, isFUD bool, fudType string) error {
+	return s.db.Model(&UserModel{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"is_fud":     isFUD,
+		"fud_type":   fudType,
+		"updated_at": time.Now(),
+	}).Error
+}
+
 // Search and query methods
 
 // SearchTweets searches tweets by text content

@@ -21,6 +21,24 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 			// Update user status with cached result
 			userStatusManager.UpdateUserAfterAnalysis(newMessage.Author.ID, newMessage.Author.UserName, aiDecision2, newMessage.TweetID)
 
+			// If user is not FUD but was previously marked as FUD, remove from FUD list
+			if !aiDecision2.IsFUDUser {
+				if dbService.IsFUDUser(newMessage.Author.ID) {
+					err := dbService.DeleteFUDUser(newMessage.Author.ID)
+					if err != nil {
+						log.Printf("Failed to remove user %s from FUD list: %v", newMessage.Author.UserName, err)
+					} else {
+						log.Printf("Removed user %s from FUD list - cached analysis shows user is clean", newMessage.Author.UserName)
+					}
+
+					// Also update user model to mark as not FUD
+					err = dbService.UpdateUserFUDStatus(newMessage.Author.ID, false, "")
+					if err != nil {
+						log.Printf("Failed to update FUD status for user %s: %v", newMessage.Author.UserName, err)
+					}
+				}
+			}
+
 			// Send notification if needed
 			if aiDecision2.IsFUDUser || newMessage.ForceNotification {
 				sendCachedNotification(newMessage, aiDecision2, notificationCh, dbService)
@@ -141,6 +159,24 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 
 	// Update user status after analysis
 	userStatusManager.UpdateUserAfterAnalysis(newMessage.Author.ID, newMessage.Author.UserName, aiDecision2, newMessage.TweetID)
+
+	// If user is not FUD but was previously marked as FUD, remove from FUD list
+	if !aiDecision2.IsFUDUser {
+		if dbService.IsFUDUser(newMessage.Author.ID) {
+			err := dbService.DeleteFUDUser(newMessage.Author.ID)
+			if err != nil {
+				log.Printf("Failed to remove user %s from FUD list: %v", newMessage.Author.UserName, err)
+			} else {
+				log.Printf("Removed user %s from FUD list - analysis shows user is clean", newMessage.Author.UserName)
+			}
+
+			// Also update user model to mark as not FUD
+			err = dbService.UpdateUserFUDStatus(newMessage.Author.ID, false, "")
+			if err != nil {
+				log.Printf("Failed to update FUD status for user %s: %v", newMessage.Author.UserName, err)
+			}
+		}
+	}
 
 	if aiDecision2.IsFUDUser || newMessage.ForceNotification {
 		// Store FUD user in database only if actually detected as FUD

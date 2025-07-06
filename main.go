@@ -17,40 +17,6 @@ const ENV_DEV_CONFIG = ".dev.env"
 const PROMPT_FILE_STEP1 = "prompt1.txt"
 const PROMPT_FILE_STEP2 = "prompt2.txt"
 
-// initializeData handles initial data loading based on environment configuration
-func initializeData(dbService *DatabaseService, twitterApi *twitterapi.TwitterAPIService) {
-	// Check if CSV import is requested
-	csvPath := os.Getenv(ENV_IMPORT_CSV_PATH)
-	if csvPath != "" {
-		log.Printf("CSV import path specified: %s", csvPath)
-
-		// Import from CSV instead of full community load
-		importer := NewCSVImporter(dbService)
-		result, err := importer.ImportCSV(csvPath)
-		if err != nil {
-			log.Printf("CSV import failed: %v", err)
-			log.Println("Falling back to community data loading...")
-		} else {
-			log.Printf("CSV import successful: %s", result.String())
-			return // Skip community loading if CSV import was successful
-		}
-	}
-
-	// Check if full community data loading is needed
-	tweetCount, err := dbService.GetTweetCount()
-	if err != nil {
-		log.Printf("Error getting tweet count: %v", err)
-		tweetCount = 0
-	}
-
-	if tweetCount < 10 {
-		log.Printf("Tweet count (%d) is less than 10, performing full community load...", tweetCount)
-		FullCommunityLoad(twitterApi, dbService)
-	} else {
-		log.Printf("Tweet count (%d) is >= 10, skipping full database initialization", tweetCount)
-	}
-}
-
 func main() {
 	// Parse command line flags
 	configFile := flag.String("config", "", "Configuration file to load (e.g., .env, .dev.env, .prod.env)")
@@ -192,6 +158,38 @@ func main() {
 	// Cleanup
 	defer userStatusManager.StopPeriodicSave()
 	wg.Wait()
+}
+func initializeData(dbService *DatabaseService, twitterApi *twitterapi.TwitterAPIService) {
+	// Check if CSV import is requested
+	csvPath := os.Getenv(ENV_IMPORT_CSV_PATH)
+	if csvPath != "" {
+		log.Printf("CSV import path specified: %s", csvPath)
+
+		// Import from CSV instead of full community load
+		importer := NewCSVImporter(dbService)
+		result, err := importer.ImportCSV(csvPath)
+		if err != nil {
+			log.Printf("CSV import failed: %v", err)
+			log.Println("Falling back to community data loading...")
+		} else {
+			log.Printf("CSV import successful: %s", result.String())
+			return // Skip community loading if CSV import was successful
+		}
+	}
+
+	// Check if full community data loading is needed
+	tweetCount, err := dbService.GetTweetCount()
+	if err != nil {
+		log.Printf("Error getting tweet count: %v", err)
+		tweetCount = 0
+	}
+
+	if tweetCount < 10 {
+		log.Printf("Tweet count (%d) is less than 10, performing full community load...", tweetCount)
+		FullCommunityLoad(twitterApi, dbService)
+	} else {
+		log.Printf("Tweet count (%d) is >= 10, skipping full database initialization", tweetCount)
+	}
 }
 
 func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, followers *twitterapi.UserFollowersResponse, followings *twitterapi.UserFollowingsResponse, userStatusManager *UserStatusManager, communityActivity *UserCommunityActivity) ClaudeMessages {
