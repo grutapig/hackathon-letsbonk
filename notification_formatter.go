@@ -169,7 +169,12 @@ func (nf *NotificationFormatter) FormatForTelegramWithDetail(alert FUDAlertNotif
 		alert.ThreadID,
 		notificationID, alert.FUDUsername, alert.FUDUsername, alert.FUDUsername,
 		nf.formatTime(alert.DetectedAt))
-
+	if alert.FUDType == FUD_TYPE {
+		message = fmt.Sprintf(`Known FUD user:\n🎯 <b>User:</b> @%s\n💬 <i>%s</i>\n• /cache_%s - details`,
+			alert.FUDUsername,
+			nf.truncateText(alert.MessagePreview, 2000),
+			alert.FUDUsername)
+	}
 	return message
 }
 

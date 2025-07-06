@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const FUD_TYPE = "known_fud_user_activity"
+
 func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan twitterapi.NewMessage, claudeApi *ClaudeApi, systemPromptFirstStep []byte, userStatusManager *UserStatusManager, dbService *DatabaseService, notificationCh chan FUDAlertNotification) {
 	defer close(fudChannel)
 
@@ -85,7 +87,7 @@ func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan t
 					ThreadID:              newMessage.ReplyTweetID,
 					DetectedAt:            time.Now().Format(time.RFC3339),
 					AlertSeverity:         "medium", // Default for known FUD users
-					FUDType:               "known_fud_user_activity",
+					FUDType:               FUD_TYPE,
 					FUDProbability:        float64(aiDecision.FudProbability) / 100.0, // Convert percentage to decimal
 					MessagePreview:        newMessage.Text,
 					RecommendedAction:     "MONITOR_ACTIVITY",
