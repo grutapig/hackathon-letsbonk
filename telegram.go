@@ -304,6 +304,12 @@ func (t *TelegramService) processUpdates() error {
 					continue
 				}
 				go t.handleTop20AnalyzeCommand(chatID)
+			case command == "/top100_analyze":
+				if !t.isAdminChat(chatID) {
+					go t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
+					continue
+				}
+				go t.handleTop100AnalyzeCommand(chatID)
 			case command == "/batch_analyze":
 				go t.handleBatchAnalyzeCommand(chatID, args)
 			case command == "/help" || command == "/start":
@@ -1613,6 +1619,70 @@ func (t *TelegramService) handleTop20AnalyzeCommand(chatID int64) {
 
 	// Send summary
 	summaryMessage := fmt.Sprintf("🚀 <b>Top 20 Analysis Started</b>\n\n📊 <b>Statistics:</b>\n• ✅ Started: %d analyses\n• ⏭️ Skipped: %d (cached)\n• 📋 Total: %d users\n\n🔍 Use /tasks to monitor progress\n💡 Use /fudlist to see detected FUD users", analysisCount, skippedCount, len(users))
+	t.SendMessage(chatID, summaryMessage)
+
+	log.Printf("Started top 20 analysis: %d analyses queued, %d skipped", analysisCount, skippedCount)
+}
+func (t *TelegramService) handleTop100AnalyzeCommand(chatID int64) {
+	// Get top 20 most active users
+	users, err := t.dbService.GetTopActiveUsers(100)
+	if err != nil {
+		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving top users: %v", err))
+		return
+	}
+
+	if len(users) == 0 {
+		t.SendMessage(chatID, "📭 No users found in database")
+		return
+	}
+
+	// Send initial confirmation
+	t.SendMessage(chatID, fmt.Sprintf("🔄 <b>Starting Top 100 Analysis</b>\n\n📊 Found %d users to analyze\n⏳ This will take several minutes...\n\n💡 Use /tasks to monitor progress", len(users)))
+
+	// Start analysis for each user in background
+	analysisCount := 0
+	skippedCount := 0
+
+	for _, user := range users {
+		// Check if user already has recent cached analysis
+		if t.dbService.HasValidCachedAnalysis(user.ID) {
+			log.Printf("Skipping user %s - has valid cached analysis", user.Username)
+			skippedCount++
+			continue
+		}
+
+		// Generate task ID for tracking
+		taskID := t.generateNotificationID()
+
+		// Create analysis task in database
+		task := &AnalysisTaskModel{
+			ID:             taskID,
+			Username:       user.Username,
+			UserID:         user.ID,
+			Status:         ANALYSIS_STATUS_PENDING,
+			CurrentStep:    ANALYSIS_STEP_INIT,
+			ProgressText:   "Queued for analysis...",
+			TelegramChatID: chatID,
+			MessageID:      0, // No progress messages for batch analysis
+			StartedAt:      time.Now(),
+		}
+
+		err = t.dbService.CreateAnalysisTask(task)
+		if err != nil {
+			log.Printf("Failed to create analysis task for user %s: %v", user.Username, err)
+			continue
+		}
+
+		// Start analysis in background
+		go t.processAnalysisTask(taskID, chatID)
+		analysisCount++
+
+		// Small delay between launches to avoid overwhelming the system
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Send summary
+	summaryMessage := fmt.Sprintf("🚀 <b>Top 100 Analysis Started</b>\n\n📊 <b>Statistics:</b>\n• ✅ Started: %d analyses\n• ⏭️ Skipped: %d (cached)\n• 📋 Total: %d users\n\n🔍 Use /tasks to monitor progress\n💡 Use /fudlist to see detected FUD users", analysisCount, skippedCount, len(users))
 	t.SendMessage(chatID, summaryMessage)
 
 	log.Printf("Started top 20 analysis: %d analyses queued, %d skipped", analysisCount, skippedCount)

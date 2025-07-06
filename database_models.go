@@ -13,6 +13,7 @@ type TweetModel struct {
 	CreatedAt     time.Time `gorm:"column:created_at" json:"created_at"`
 	ReplyCount    int       `gorm:"column:reply_count" json:"reply_count"`
 	UserID        string    `gorm:"column:user_id;index" json:"user_id"`
+	Username      string    `gorm:"column:username;index" json:"username"`
 	InReplyToID   string    `gorm:"column:in_reply_to_id;index" json:"in_reply_to_id,omitempty"`
 	UpdatedAt     time.Time `gorm:"column:updated_at" json:"updated_at"`
 	SourceType    string    `gorm:"column:source_type;index" json:"source_type"`       // "community", "ticker_search", "context", "monitoring"
