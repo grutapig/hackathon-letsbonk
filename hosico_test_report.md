@@ -12,9 +12,9 @@
 ## 📈 Community Statistics
 
 | Metric | Value |
-|--------|-------|
+|--------|--|
 | **Total Users Analyzed** | 1,200 |
-| **Messages Processed** | ~8,500 |
+| **Messages Processed** | 6635 |
 | **FUD Users Detected** | 0 |
 | **Analysis Completion Rate** | 100% |
 | **System Restarts Required** | 0 |
@@ -67,16 +67,6 @@
 - **No false positives**: Clean users correctly identified as clean
 - **Comprehensive coverage**: All user types analyzed (new, veteran, high/low activity)
 - **Context awareness**: Memes and humor properly categorized as benign
-
----
-
-## 📋 Comparison with Previous Tests
-
-| Community | Users | FUD Detected | False Positives | System Stability |
-|-----------|-------|--------------|-----------------|------------------|
-| **$DARK** | 2,150 | 15 users | 2-3 cases | Good |
-| **$USELESS** | 3,235 | 23 users | 13 cases (pre-fix) | Excellent |
-| **$HOSICO** | 1,200 | 0 users | 0 cases | Excellent |
 
 ---
 
