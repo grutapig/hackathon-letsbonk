@@ -20,10 +20,10 @@
 - **Enhanced AI logic:** Added humor detection and community-specific context awareness
 - **Refined rules:** Implemented additional logic for private community analysis
 - **Scope:** Re-analyzed existing dataset
-- **Detection:** 23 FUD users identified (refined results)
+- **Detection:** 24 FUD users identified (refined results)
 
 ### Stage 3: Manual Verification
-- **Manual review:** Human verification of all 23 detected users
+- **Manual review:** Human verification of all 24 detected users
 - **Final accuracy assessment:** Comprehensive evaluation of detection performance
 
 ## Detection Results Analysis
@@ -34,22 +34,22 @@
 - **Retained:** 22 users
 
 ### Second Scan (Enhanced Logic)
-- **Total detected:** 23 users
+- **Total detected:** 24 users
 - **Manual verification breakdown:**
-    - **Confirmed FUD:** 16 users (69.6% accuracy)
-    - **Agent errors:** 4 users (17.4% false positives)
-    - **Disputed cases:** 3 users (13.0% unclear/borderline)
+    - **Confirmed FUD:** 16 users (66% accuracy)
+    - **Agent errors:** 4 users (16% false positives)
+    - **Disputed cases:** 4 users (16% unclear/borderline)
 
 ## Performance Metrics
 
 ### Accuracy Analysis
 - **True Positives:** 16 confirmed FUD users
 - **False Positives:** 4 agent errors
-- **Disputed Cases:** 3 borderline cases
+- **Disputed Cases:** 4 borderline cases
 
 ### Final Accuracy Rates
-- **Primary Detection Accuracy:** 69.6% (16/23 correct identifications)
-- **Error Rate:** 17.4% (4/23 false positives)
+- **Primary Detection Accuracy:** 66% (16/24 correct identifications)
+- **Error Rate:** 16% (4/24 false positives)
 - **Overall Effectiveness:** 82-83% (including disputed cases as partial successes)
 
 ## Key Errors and Fixes
@@ -60,7 +60,7 @@
 - **Solution:** Enhanced AI prompts with humor detection and context awareness for token name
 
 ### Technical Issues Identified
-- **Borderline cases:** 3 users requiring human judgment for final classification
+- **Borderline cases:** 4 users requiring human judgment for final classification
 - **Context sensitivity:** Need for more nuanced understanding of community culture
 
 ## Disputed Cases Breakdown
