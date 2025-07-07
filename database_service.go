@@ -744,7 +744,7 @@ func (s *DatabaseService) SaveCachedAnalysis(userID, username string, analysis S
 // GetCachedAnalysis retrieves cached analysis if not expired
 func (s *DatabaseService) GetCachedAnalysis(userID string) (*SecondStepClaudeResponse, error) {
 	var cached CachedAnalysisModel
-	err := s.db.Where("user_id = ? AND expires_at > ?", userID, time.Now()).First(&cached).Error
+	err := s.db.Where("user_id = ?", userID).First(&cached).Error
 	if err != nil {
 		return nil, err
 	}
