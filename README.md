@@ -96,5 +96,8 @@ The MVP leverages Twitter monitoring, custom development tools, and analysis ins
 ### $DARK Community Testing (Initial Beta)
 For detailed information about the initial beta testing phase conducted on the $DARK community, including performance metrics, technical challenges, and system improvements, see the [Beta Testing Report](beta_test_report.md).
 
+### $USELESS Token Community Testing (Second Beta)
+For results from the USELESS token community testing phase, demonstrating improved FUD detection accuracy and system refinements after processing 1,612 users, see the [USELESS Test Report](beta_test_report_useless.md).
+
 ### $HOSICO Token Community Testing (Clean Community Validation)
 For results from the HOSICO token community testing phase, demonstrating the system's ability to accurately identify clean communities with zero FUD users detected from 1,200 analyzed users, see the [HOSICO Test Report](hosico_test_report.md).

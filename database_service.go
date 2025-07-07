@@ -688,9 +688,6 @@ func (s *DatabaseService) GetAnalysisStats() (map[string]interface{}, error) {
 	return stats, nil
 }
 
-// Cached Analysis Methods
-
-// SaveCachedAnalysis saves analysis result to cache with 24-hour expiration
 func (s *DatabaseService) SaveCachedAnalysis(userID, username string, analysis SecondStepClaudeResponse) error {
 	// Convert key evidence to JSON string
 	keyEvidenceJSON := ""
@@ -741,7 +738,6 @@ func (s *DatabaseService) SaveCachedAnalysis(userID, username string, analysis S
 	}
 }
 
-// GetCachedAnalysis retrieves cached analysis if not expired
 func (s *DatabaseService) GetCachedAnalysis(userID string) (*SecondStepClaudeResponse, error) {
 	var cached CachedAnalysisModel
 	err := s.db.Where("user_id = ?", userID).First(&cached).Error
@@ -768,19 +764,12 @@ func (s *DatabaseService) GetCachedAnalysis(userID string) (*SecondStepClaudeRes
 	return result, nil
 }
 
-// HasValidCachedAnalysis checks if user has valid cached analysis
 func (s *DatabaseService) HasValidCachedAnalysis(userID string) bool {
 	var count int64
 	s.db.Model(&CachedAnalysisModel{}).Where("user_id = ?", userID).Count(&count)
 	return count > 0
 }
 
-// CleanExpiredCache removes expired cached analysis entries
-func (s *DatabaseService) CleanExpiredCache() error {
-	return s.db.Where("expires_at < ?", time.Now()).Delete(&CachedAnalysisModel{}).Error
-}
-
-// GetAllFUDUsersFromCache gets all FUD users from both active FUD table and cache with last message info
 func (s *DatabaseService) GetAllFUDUsersFromCache() ([]map[string]interface{}, error) {
 	var results []map[string]interface{}
 
@@ -869,7 +858,6 @@ func (s *DatabaseService) GetAllFUDUsersFromCache() ([]map[string]interface{}, e
 	return results, nil
 }
 
-// GetActiveFUDUsersSortedByLastMessage gets FUD users from cache sorted by last message date (most recent first)
 func (s *DatabaseService) GetActiveFUDUsersSortedByLastMessage() ([]map[string]interface{}, error) {
 	var results []map[string]interface{}
 
