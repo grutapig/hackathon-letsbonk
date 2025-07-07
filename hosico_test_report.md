@@ -1,3 +1,5 @@
+# Beta Testing Report: AI agent "Better Call GRUTA"
+
 # 🐱 HOSICO Token Community Testing Report
 
 ## 📊 Testing Overview
