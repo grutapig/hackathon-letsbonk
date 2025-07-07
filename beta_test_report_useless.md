@@ -78,8 +78,7 @@
 
 ### Detection Enhancement
 1. **Improve context awareness:** Better understanding of community-specific humor
-2. **Reduce false negatives:** Enhanced detection to catch missed users like galaxyraidkol
-3. **Borderline case handling:** Develop clearer criteria for disputed classifications
+2. **Borderline case handling:** Develop clearer criteria for disputed classifications
 
 ## Final Assessment
 The beta test revealed significant challenges in automated FUD detection, particularly around context understanding and community-specific communication patterns. While the system achieved 66% accuracy in direct detection, the inclusion of disputed cases and overall system effectiveness suggests room for improvement in both precision and recall rates.
