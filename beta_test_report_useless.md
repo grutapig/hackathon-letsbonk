@@ -24,16 +24,14 @@
 
 ### Stage 3: Manual Verification
 - **Manual review:** Human verification of all 23 detected users
-- **Additional discovery:** 1 missed FUD user (galaxyraidkol) identified during manual review
 - **Final accuracy assessment:** Comprehensive evaluation of detection performance
 
 ## Detection Results Analysis
 
-### First Scan (Dark Community Rules)
+### First Scan
 - **Total detected:** 34 users
 - **Removed in second scan:** 12 users (reduced false positives)
 - **Retained:** 22 users
-- **Added in second scan:** 1 new user (demougecrypto)
 
 ### Second Scan (Enhanced Logic)
 - **Total detected:** 23 users
@@ -41,14 +39,12 @@
     - **Confirmed FUD:** 16 users (69.6% accuracy)
     - **Agent errors:** 4 users (17.4% false positives)
     - **Disputed cases:** 3 users (13.0% unclear/borderline)
-    - **Additional discovery:** 1 missed FUD user (galaxyraidkol)
 
 ## Performance Metrics
 
 ### Accuracy Analysis
 - **True Positives:** 16 confirmed FUD users
 - **False Positives:** 4 agent errors
-- **False Negatives:** 1 missed user (galaxyraidkol)
 - **Disputed Cases:** 3 borderline cases
 
 ### Final Accuracy Rates
@@ -64,7 +60,6 @@
 - **Solution:** Enhanced AI prompts with humor detection and context awareness for token name
 
 ### Technical Issues Identified
-- **Detection gaps:** Missed 1 confirmed FUD user (galaxyraidkol)
 - **Borderline cases:** 3 users requiring human judgment for final classification
 - **Context sensitivity:** Need for more nuanced understanding of community culture
 

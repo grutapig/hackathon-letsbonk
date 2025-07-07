@@ -52,9 +52,9 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 📄 <b>Thread Context:</b>
 <b>Root:</b> <i>%s</i> - @%s
 <b>Reply:</b> <i>%s</i> - @%s`,
-				nf.truncateText(alert.GrandParentPostText, 80),
+				nf.truncateText(alert.GrandParentPostText, 150),
 				alert.GrandParentPostAuthor,
-				nf.truncateText(alert.ParentPostText, 80),
+				nf.truncateText(alert.ParentPostText, 150),
 				alert.ParentPostAuthor)
 		} else if alert.OriginalPostText != "" || alert.ParentPostText != "" {
 			// Show parent -> current structure
@@ -68,7 +68,7 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 
 📄 <b>Original Post Context:</b>
 <i>%s</i> - @%s`,
-				nf.truncateText(postText, 100),
+				nf.truncateText(postText, 200),
 				postAuthor)
 		}
 	}
@@ -111,7 +111,7 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 		alert.FUDUsername,
 		alert.FUDProbability*100,
 		alert.RecommendedAction,
-		nf.truncateText(alert.MessagePreview, 120),
+		nf.truncateText(alert.MessagePreview, 500),
 		contextSection,
 		alert.FUDUsername, alert.FUDMessageID,
 		alert.ThreadID,
@@ -164,7 +164,7 @@ func (nf *NotificationFormatter) FormatForTelegramWithDetail(alert FUDAlertNotif
 		alert.FUDUsername,
 		alert.FUDProbability*100,
 		alert.RecommendedAction,
-		nf.truncateText(alert.MessagePreview, 120),
+		nf.truncateText(alert.MessagePreview, 500),
 		alert.FUDUsername, alert.FUDMessageID,
 		alert.ThreadID,
 		notificationID, alert.FUDUsername, alert.FUDUsername, alert.FUDUsername,
@@ -322,7 +322,7 @@ Time: %s`,
 		alert.FUDUsername, alert.FUDUserID,
 		nf.formatFUDType(alert.FUDType), alert.FUDProbability*100,
 		alert.RecommendedAction,
-		nf.truncateText(alert.MessagePreview, 100),
+		nf.truncateText(alert.MessagePreview, 500),
 		alert.FUDUsername, alert.FUDMessageID,
 		alert.ThreadID,
 		nf.formatTime(alert.DetectedAt))
