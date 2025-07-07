@@ -87,4 +87,4 @@
 3. **Continuous learning:** Update detection rules based on manual feedback
 
 ## Final Assessment
-The beta test revealed significant challenges in automated FUD detection, particularly around context understanding and community-specific communication patterns. While the system achieved 69.6% accuracy in direct detection, the inclusion of disputed cases and overall system effectiveness suggests room for improvement in both precision and recall rates.
+The beta test revealed significant challenges in automated FUD detection, particularly around context understanding and community-specific communication patterns. While the system achieved 66% accuracy in direct detection, the inclusion of disputed cases and overall system effectiveness suggests room for improvement in both precision and recall rates.
