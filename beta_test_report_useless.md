@@ -10,7 +10,7 @@
 
 ## Test Stages
 
-### Stage 1: Initial Analysis with Dark Community Rules
+### Stage 1: Initial Analysis
 - **Scope:** 1,612 users analyzed
 - **Detection:** 34 FUD users identified
 - **Problem:** High false positive rate due to generic detection rules
