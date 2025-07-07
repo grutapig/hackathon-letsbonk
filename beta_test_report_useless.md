@@ -81,10 +81,5 @@
 2. **Reduce false negatives:** Enhanced detection to catch missed users like galaxyraidkol
 3. **Borderline case handling:** Develop clearer criteria for disputed classifications
 
-### System Optimization
-1. **Manual review integration:** Streamlined process for human verification
-2. **Confidence scoring:** Implement probability ratings for detections
-3. **Continuous learning:** Update detection rules based on manual feedback
-
 ## Final Assessment
 The beta test revealed significant challenges in automated FUD detection, particularly around context understanding and community-specific communication patterns. While the system achieved 66% accuracy in direct detection, the inclusion of disputed cases and overall system effectiveness suggests room for improvement in both precision and recall rates.
