@@ -73,6 +73,16 @@ transactions, err := service.ScanAllTransactions(
     50,  // rate limit in ms
 )
 
+// Stream transactions to files (saves immediately, interruptible)
+err = service.StreamTransactionsToFiles(
+    ctx,
+    "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8", // contract address
+    100,                      // batch size
+    100,                      // rate limit in ms
+    "transactions.csv",       // CSV output file
+    "raw_transactions.json",  // Raw data output file
+)
+
 // Get specific transaction details
 txResp, err := service.GetTransaction(ctx, "signature_here")
 
@@ -80,10 +90,43 @@ txResp, err := service.GetTransaction(ctx, "signature_here")
 signatures, err := service.GetSignaturesForAddress(ctx, "address_here", 100, "")
 ```
 
+## Streaming vs Batch Processing
+
+### Streaming Mode (`StreamTransactionsToFiles`)
+- **Immediate saving**: Each transaction is written to files immediately after processing
+- **Buffer flushing**: Files are synced after each write operation
+- **Interruptible**: Can be safely interrupted at any time (Ctrl+C) without losing data
+- **Memory efficient**: Processes one transaction at a time
+- **Dual output**: Generates both CSV summary and raw JSON data files
+- **Progress tracking**: Shows real-time progress with transaction signatures
+
+### Batch Mode (`ScanAllTransactions`)
+- **Memory collection**: Collects all transactions in memory before saving
+- **Bulk processing**: Processes all transactions then saves at the end
+- **Higher memory usage**: Stores all transactions in memory
+- **Single output**: Returns data for manual processing/saving
+
 ## Output Formats
 
-### JSON Format
-The JSON output includes complete transaction details:
+### CSV Format (Streaming)
+Real-time CSV output with immediate flushing:
+- Signature, slot, block_time
+- Success status and fee
+- Number of instructions
+- Program IDs involved
+
+### Raw JSON Format (Streaming)
+Complete transaction details saved immediately:
+- Full RPC response data
+- Transaction signatures with separators
+- Block time and slot information
+- Complete instruction data with parsed information
+- Account keys and program IDs
+- Transaction success/failure status
+- Fee information and log messages
+
+### JSON Format (Batch)
+Processed transaction array:
 - Transaction signatures
 - Block time and slot information
 - Complete instruction data with parsed information
@@ -91,13 +134,6 @@ The JSON output includes complete transaction details:
 - Transaction success/failure status
 - Fee information
 - Log messages
-
-### CSV Format
-The CSV output provides a summary view:
-- Signature, slot, block_time
-- Success status and fee
-- Number of instructions
-- Program IDs involved
 
 ## API Reference
 
@@ -107,7 +143,10 @@ The CSV output provides a summary view:
 Creates a new Solana service instance.
 
 #### `ScanAllTransactions(ctx context.Context, contractAddress string, batchSize int, rateLimitMs int) ([]TransactionData, error)`
-Scans all transactions for a given contract address.
+Scans all transactions for a given contract address and returns them in memory.
+
+#### `StreamTransactionsToFiles(ctx context.Context, contractAddress string, batchSize int, rateLimitMs int, csvFilename string, rawDataFilename string) error`
+Streams transactions to files immediately as they are processed. Each transaction is saved to CSV and raw JSON files with buffer flushing. Process can be safely interrupted at any time.
 
 #### `GetSignaturesForAddress(ctx context.Context, address string, limit int, before string) ([]SignatureInfo, error)`
 Gets signature information for an address.

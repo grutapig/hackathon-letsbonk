@@ -13,11 +13,12 @@ const ENV_MONITORING_METHOD = "monitoring_method" // "incremental" or "full_scan
 const ENV_CLAUDE_API_KEY = "claude_api_key"
 const ENV_TELEGRAM_API_KEY = "telegram_api_key"
 const ENV_TELEGRAM_ADMIN_CHAT_ID = "tg_admin_chat_id"
-const ENV_TARGET_USERS = "target_users"                       // Comma-separated list of usernames to import tweets from
-const ENV_DATABASE_NAME = "database_name"                     // Database file name (default: hackathon.db)
-const ENV_IMPORT_CSV_PATH = "import_csv_path"                 // CSV file path to import on startup
-const ENV_NOTIFICATION_USERS = "notification_users"           // Comma-separated list of usernames for notifications
-const ENV_CLEAR_ANALYSIS_ON_START = "clear_analysis_on_start" // Clear all analysis flags on startup (true/false)
+const ENV_TARGET_USERS = "target_users"
+const ENV_DATABASE_NAME = "database_name"
+const ENV_IMPORT_CSV_PATH = "import_csv_path"
+const ENV_NOTIFICATION_USERS = "notification_users"
+const ENV_CLEAR_ANALYSIS_ON_START = "clear_analysis_on_start"
+const ENV_SOLANA_RPC_URL = "solana_rpc"
 
 // Monitoring method constants
 const MONITORING_METHOD_INCREMENTAL = "incremental"

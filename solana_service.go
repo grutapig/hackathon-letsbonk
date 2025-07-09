@@ -387,6 +387,159 @@ func (s *SolanaService) ScanAllTransactions(ctx context.Context, contractAddress
 	return allTransactions, nil
 }
 
+func (s *SolanaService) StreamTransactionsToFiles(ctx context.Context, contractAddress string, batchSize int, rateLimitMs int, csvFilename string, rawDataFilename string) error {
+	var before string
+	processed := 0
+
+	fmt.Printf("Starting streaming transaction scan for contract: %s\n", contractAddress)
+	fmt.Printf("CSV output: %s\n", csvFilename)
+	fmt.Printf("Raw data output: %s\n", rawDataFilename)
+
+	csvFile, err := os.OpenFile(csvFilename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create CSV file: %w", err)
+	}
+	defer csvFile.Close()
+
+	rawFile, err := os.OpenFile(rawDataFilename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create raw data file: %w", err)
+	}
+	defer rawFile.Close()
+
+	csvHeader := "signature,slot,block_time,success,fee,num_instructions,program_ids\n"
+	_, err = csvFile.WriteString(csvHeader)
+	if err != nil {
+		return fmt.Errorf("failed to write CSV header: %w", err)
+	}
+	csvFile.Sync()
+
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Printf("Context cancelled. Processed %d transactions total.\n", processed)
+			return ctx.Err()
+		default:
+		}
+
+		signatures, err := s.GetSignaturesForAddress(ctx, contractAddress, batchSize, before)
+		if err != nil {
+			fmt.Printf("Error getting signatures: %v\n", err)
+			return fmt.Errorf("failed to get signatures: %w", err)
+		}
+
+		if len(signatures) == 0 {
+			break
+		}
+
+		fmt.Printf("Processing batch of %d signatures...\n", len(signatures))
+
+		for _, sig := range signatures {
+			select {
+			case <-ctx.Done():
+				fmt.Printf("Context cancelled during processing. Processed %d transactions total.\n", processed)
+				return ctx.Err()
+			default:
+			}
+
+			if rateLimitMs > 0 {
+				time.Sleep(time.Duration(rateLimitMs) * time.Millisecond)
+			}
+
+			txResp, err := s.GetTransaction(ctx, sig.Signature)
+			if err != nil {
+				fmt.Printf("Error getting transaction %s: %v\n", sig.Signature, err)
+				continue
+			}
+
+			if txResp == nil {
+				fmt.Printf("Transaction %s not found\n", sig.Signature)
+				continue
+			}
+
+			rawData, err := json.MarshalIndent(txResp, "", "  ")
+			if err != nil {
+				fmt.Printf("Error marshaling raw data for %s: %v\n", sig.Signature, err)
+				continue
+			}
+
+			_, err = rawFile.WriteString(fmt.Sprintf("=== Transaction: %s ===\n", sig.Signature))
+			if err != nil {
+				fmt.Printf("Error writing raw data separator: %v\n", err)
+				continue
+			}
+
+			_, err = rawFile.Write(rawData)
+			if err != nil {
+				fmt.Printf("Error writing raw data: %v\n", err)
+				continue
+			}
+
+			_, err = rawFile.WriteString("\n\n")
+			if err != nil {
+				fmt.Printf("Error writing raw data newline: %v\n", err)
+				continue
+			}
+
+			rawFile.Sync()
+
+			txData := s.ParseTransactionData(sig.Signature, txResp)
+
+			programIds := make(map[string]bool)
+			for _, instruction := range txData.Instructions {
+				if instruction.ProgramIdIndex < len(txData.AccountKeys) {
+					programIds[txData.AccountKeys[instruction.ProgramIdIndex]] = true
+				}
+			}
+
+			var programIdList []string
+			for programId := range programIds {
+				programIdList = append(programIdList, programId)
+			}
+
+			programIdsStr := ""
+			for i, pid := range programIdList {
+				if i > 0 {
+					programIdsStr += ";"
+				}
+				programIdsStr += pid
+			}
+
+			csvLine := fmt.Sprintf("%s,%d,%d,%t,%d,%d,%s\n",
+				txData.Signature,
+				txData.Slot,
+				txData.BlockTime,
+				txData.Success,
+				txData.Fee,
+				len(txData.Instructions),
+				programIdsStr,
+			)
+
+			_, err = csvFile.WriteString(csvLine)
+			if err != nil {
+				fmt.Printf("Error writing CSV line: %v\n", err)
+				continue
+			}
+
+			csvFile.Sync()
+
+			processed++
+			if processed%10 == 0 {
+				fmt.Printf("Processed %d transactions... (Last: %s)\n", processed, sig.Signature)
+			}
+		}
+
+		before = signatures[len(signatures)-1].Signature
+
+		if len(signatures) < batchSize {
+			break
+		}
+	}
+
+	fmt.Printf("Completed streaming scan. Total transactions processed: %d\n", processed)
+	return nil
+}
+
 func (s *SolanaService) ParseTransactionData(signature string, txResp *TransactionResponse) TransactionData {
 	txData := TransactionData{
 		Signature:   signature,
