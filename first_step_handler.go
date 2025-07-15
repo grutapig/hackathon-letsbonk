@@ -88,10 +88,10 @@ func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan t
 					DetectedAt:            time.Now().Format(time.RFC3339),
 					AlertSeverity:         "medium", // Default for known FUD users
 					FUDType:               FUD_TYPE,
-					FUDProbability:        float64(aiDecision.FudProbability) / 100.0, // Convert percentage to decimal
+					FUDProbability:        0, // Convert percentage to decimal
 					MessagePreview:        newMessage.Text,
 					RecommendedAction:     "MONITOR_ACTIVITY",
-					KeyEvidence:           []string{"Known FUD user", aiDecision.Reason},
+					KeyEvidence:           []string{"Known FUD user"},
 					DecisionReason:        "Quick analysis of known FUD user activity",
 					OriginalPostText:      originalPostText,
 					OriginalPostAuthor:    originalPostAuthor,
@@ -141,7 +141,7 @@ func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan t
 		aiDecision := FirstStepClaudeResponse{}
 		err = json.Unmarshal([]byte("{"+resp.Content[0].Text), &aiDecision)
 		if err != nil {
-			log.Printf("error unmarshaling claude response: %s", err)
+			log.Printf("error unmarshaling claude response: %s; raw: %s", err, "{"+resp.Content[0].Text)
 			continue
 		}
 

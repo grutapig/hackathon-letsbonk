@@ -574,6 +574,9 @@ func (t *TelegramService) BroadcastMessage(text string) error {
 		if err != nil {
 			log.Printf("Failed to send message to chat %d: %v", chatID, err)
 			errors = append(errors, err)
+			if strings.Contains(err.Error(), `"error_code":403`) {
+				t.removeChatId(chatID)
+			}
 		}
 	}
 
@@ -2368,4 +2371,10 @@ func (t *TelegramService) getAnalysisStatistics() (map[string]int, error) {
 	stats["failed"] = int(failed)
 
 	return stats, nil
+}
+
+func (t *TelegramService) removeChatId(chatId int64) {
+	t.chatMutex.Lock()
+	defer t.chatMutex.Unlock()
+	delete(t.chatIDs, chatId)
 }

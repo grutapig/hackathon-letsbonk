@@ -19,7 +19,7 @@ const PROMPT_FILE_STEP2 = "prompt2.txt"
 
 func main() {
 	// Parse command line flags
-	configFile := flag.String("config", "", "Configuration file to load (e.g., .env, .dev.env, .prod.env)")
+	configFile := flag.String("config", ".env", "Configuration file to load (e.g., .env, .dev.env, .prod.env)")
 	showHelp := flag.Bool("help", false, "Show help information")
 	flag.BoolVar(showHelp, "h", false, "Show help information (shorthand)")
 
@@ -262,9 +262,9 @@ func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, foll
 }
 
 type FirstStepClaudeResponse struct {
-	IsFud          bool    `json:"is_fud"`
-	FudProbability float64 `json:"fud_probability"`
-	Reason         string  `json:"reason"`
+	IsFud bool `json:"is_fud"`
+	//FudProbability float64 `json:"fud_probability"`
+	//Reason         string  `json:"reason"`
 }
 type SecondStepClaudeResponse struct {
 	IsFUDAttack    bool     `json:"is_fud_attack"`
