@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/grutapig/hackaton/twitterapi"
+	"github.com/grutapig/hackaton/twitterapi_reverse"
 	"io"
 	"log"
 	"mime/multipart"
@@ -14,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -40,6 +42,7 @@ type TelegramService struct {
 	systemPromptSecondStep []byte                     // Will be set later
 	ticker                 string                     // Will be set later
 	analysisChannel        chan twitterapi.NewMessage // Channel for manual analysis requests
+	loggingService         *LoggingService            // Logging service for analytics
 }
 
 type TelegramUpdate struct {
@@ -316,6 +319,16 @@ func (t *TelegramService) processUpdates() error {
 				go t.handleTop100AnalyzeCommand(chatID)
 			case command == "/batch_analyze":
 				go t.handleBatchAnalyzeCommand(chatID, args)
+			case command == "/analytics":
+				go t.handleLoggingAnalyticsCommand(chatID, int(messageID), args)
+			case command == "/cleanup":
+				go t.handleLoggingCleanupCommand(chatID, int(messageID), args)
+			case command == "/update_reverse_auth":
+				if !t.isAdminChat(chatID) {
+					go t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
+					continue
+				}
+				go t.handleUpdateReverseAuthCommand(chatID, strings.Join(args, " "))
 			case command == "/help" || command == "/start":
 				go t.handleHelpCommand(chatID)
 			default:
@@ -1132,7 +1145,13 @@ func (t *TelegramService) handleHelpCommand(chatID int64) {
 • /tasks - Show running analysis tasks
 • /batch_analyze user1,user2,user3 - Analyze multiple users
 • /top20_analyze - Analyze top 20 most active users (admin only)
+🧹 <b>Logging & Analytics:</b>
+• /analytics [today|week|month] - View system analytics
+• /cleanup [week|month|all] - Clean up old logs (admin only)
 • /analyze_all - Analyze ALL users with messages (admin only)
+
+🔧 <b>System Management (Admin Only):</b>
+• /update_reverse_auth <curl_command> - Update reverse API authentication
 
 ❓ <b>Help Commands:</b>
 • /help - Show this help message
@@ -2377,4 +2396,182 @@ func (t *TelegramService) removeChatId(chatId int64) {
 	t.chatMutex.Lock()
 	defer t.chatMutex.Unlock()
 	delete(t.chatIDs, chatId)
+}
+
+// parseCurlCommand parses a curl command and extracts authentication headers
+func (t *TelegramService) parseCurlCommand(curlCommand string) (string, string, string, error) {
+	// Clean up the command
+	curlCommand = strings.TrimSpace(curlCommand)
+
+	// Regular expressions to extract headers
+	authRegex := regexp.MustCompile(`-H\s+['"]Authorization:\s*([^'"]+)['"]`)
+	csrfRegex := regexp.MustCompile(`-H\s+['"]x-csrf-token:\s*([^'"]+)['"]`)
+	cookieRegex := regexp.MustCompile(`-H\s+['"]Cookie:\s*([^'"]+)['"]`)
+
+	var authorization, csrfToken, cookie string
+
+	// Extract Authorization header
+	if matches := authRegex.FindStringSubmatch(curlCommand); len(matches) > 1 {
+		authorization = matches[1]
+	} else {
+		return "", "", "", fmt.Errorf("Authorization header not found in curl command")
+	}
+
+	// Extract CSRF token
+	if matches := csrfRegex.FindStringSubmatch(curlCommand); len(matches) > 1 {
+		csrfToken = matches[1]
+	} else {
+		return "", "", "", fmt.Errorf("x-csrf-token header not found in curl command")
+	}
+
+	// Extract Cookie header
+	if matches := cookieRegex.FindStringSubmatch(curlCommand); len(matches) > 1 {
+		cookie = matches[1]
+	} else {
+		return "", "", "", fmt.Errorf("Cookie header not found in curl command")
+	}
+
+	return authorization, csrfToken, cookie, nil
+}
+
+// handleUpdateReverseAuthCommand handles the /update_reverse_auth command
+func (t *TelegramService) handleUpdateReverseAuthCommand(chatID int64, curlCommand string) {
+	if curlCommand == "" {
+		t.SendMessage(chatID, "❌ Usage: /update_reverse_auth <curl_command>\n\nExample:\n/update_reverse_auth curl -H 'Authorization: Bearer xyz' -H 'x-csrf-token: abc' -H 'Cookie: session=123' ...")
+		return
+	}
+
+	// Send initial message
+	t.SendMessage(chatID, "🔄 Parsing curl command and updating reverse API authentication...")
+
+	// Parse curl command
+	authorization, csrfToken, cookie, err := t.parseCurlCommand(curlCommand)
+	if err != nil {
+		t.SendMessage(chatID, fmt.Sprintf("❌ Failed to parse curl command: %v", err))
+		return
+	}
+
+	// Store current values for rollback
+	oldAuth := os.Getenv(ENV_TWITTER_REVERSE_AUTHORIZATION)
+	oldCsrf := os.Getenv(ENV_TWITTER_REVERSE_CSRF_TOKEN)
+	oldCookie := os.Getenv(ENV_TWITTER_REVERSE_COOKIE)
+
+	// Temporarily update environment variables
+	os.Setenv(ENV_TWITTER_REVERSE_AUTHORIZATION, authorization)
+	os.Setenv(ENV_TWITTER_REVERSE_CSRF_TOKEN, csrfToken)
+	os.Setenv(ENV_TWITTER_REVERSE_COOKIE, cookie)
+
+	// Create new auth struct
+	auth := &twitterapi_reverse.TwitterAuth{
+		Authorization: authorization,
+		XCSRFToken:    csrfToken,
+		Cookie:        cookie,
+	}
+
+	// Test the new authentication
+	t.SendMessage(chatID, "🧪 Testing reverse API with new credentials...")
+
+	// Create reverse service and test
+	reverseService := twitterapi_reverse.NewTwitterReverseService(auth, os.Getenv(ENV_PROXY_DSN), false)
+
+	// Test with community tweets
+	communityID := os.Getenv(ENV_DEMO_COMMUNITY_ID)
+	tweets, err := reverseService.GetCommunityTweets(communityID, 10)
+	if err != nil {
+		// Rollback on error
+		os.Setenv(ENV_TWITTER_REVERSE_AUTHORIZATION, oldAuth)
+		os.Setenv(ENV_TWITTER_REVERSE_CSRF_TOKEN, oldCsrf)
+		os.Setenv(ENV_TWITTER_REVERSE_COOKIE, oldCookie)
+
+		t.SendMessage(chatID, fmt.Sprintf("❌ Test failed, credentials rolled back: %v", err))
+		return
+	}
+
+	// Success - update .env file
+	err = t.updateEnvFile(authorization, csrfToken, cookie)
+	if err != nil {
+		t.SendMessage(chatID, fmt.Sprintf("⚠️ Authentication works but failed to update .env file: %v", err))
+		return
+	}
+
+	// Prepare response with tweet info
+	var lastTweetText string
+	if len(tweets) > 0 {
+		lastTweet := tweets[len(tweets)-1]
+		if len(lastTweet.Text) > 40 {
+			lastTweetText = lastTweet.Text[:40] + "..."
+		} else {
+			lastTweetText = lastTweet.Text
+		}
+	}
+
+	// Send success message
+	successMessage := fmt.Sprintf(`✅ <b>Reverse API authentication updated successfully!</b>
+
+📊 <b>Test Results:</b>
+• Found: %d tweets
+• Last tweet: "%s"
+
+🔧 <b>Updated credentials:</b>
+• Authorization: %s...
+• CSRF Token: %s...
+• Cookie: %s...
+
+💾 .env file updated and ready for use!`,
+		len(tweets),
+		lastTweetText,
+		authorization[:min(20, len(authorization))],
+		csrfToken[:min(20, len(csrfToken))],
+		cookie[:min(50, len(cookie))])
+
+	t.SendMessage(chatID, successMessage)
+}
+
+// updateEnvFile updates the .env file with new reverse API credentials
+func (t *TelegramService) updateEnvFile(authorization, csrfToken, cookie string) error {
+	envPath := ".dev.env"
+
+	// Read current .env file
+	content, err := os.ReadFile(envPath)
+	if err != nil {
+		return fmt.Errorf("failed to read .env file: %v", err)
+	}
+
+	envContent := string(content)
+
+	// Update each field
+	envContent = t.updateEnvLine(envContent, "twitter_reverse_authorization", authorization)
+	envContent = t.updateEnvLine(envContent, "twitter_reverse_csrf_token", csrfToken)
+	envContent = t.updateEnvLine(envContent, "twitter_reverse_cookie", cookie)
+
+	// Write back to file
+	err = os.WriteFile(envPath, []byte(envContent), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write .env file: %v", err)
+	}
+
+	return nil
+}
+
+// updateEnvLine updates a specific line in the .env content
+func (t *TelegramService) updateEnvLine(content, key, value string) string {
+	lines := strings.Split(content, "\n")
+
+	// Find and update the line
+	for i, line := range lines {
+		if strings.HasPrefix(line, key+"=") {
+			lines[i] = fmt.Sprintf("%s=%s", key, value)
+			break
+		}
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// Helper function for min
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

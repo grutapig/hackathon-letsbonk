@@ -19,6 +19,13 @@ const ENV_IMPORT_CSV_PATH = "import_csv_path"
 const ENV_NOTIFICATION_USERS = "notification_users"
 const ENV_CLEAR_ANALYSIS_ON_START = "clear_analysis_on_start"
 const ENV_SOLANA_RPC_URL = "solana_rpc"
+const ENV_LOGGING_DATABASE_PATH = "logging_database_path"
+
+// Twitter Reverse API constants
+const ENV_TWITTER_REVERSE_AUTHORIZATION = "twitter_reverse_authorization"
+const ENV_TWITTER_REVERSE_CSRF_TOKEN = "twitter_reverse_csrf_token"
+const ENV_TWITTER_REVERSE_COOKIE = "twitter_reverse_cookie"
+const ENV_TWITTER_REVERSE_ENABLED = "twitter_reverse_enabled"
 
 // Monitoring method constants
 const MONITORING_METHOD_INCREMENTAL = "incremental"

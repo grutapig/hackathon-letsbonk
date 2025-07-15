@@ -1,8 +1,10 @@
 module github.com/grutapig/hackaton
 
-go 1.22.1
+go 1.21.1
 
 require (
+	github.com/buger/jsonparser v1.1.1
+	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/stretchr/testify v1.10.0
 	gorm.io/driver/sqlite v1.5.4

@@ -3,13 +3,22 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/grutapig/hackaton/twitterapi"
 	"log"
 	"os"
 	"time"
 )
 
-func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUDAlertNotification, twitterApi *twitterapi.TwitterAPIService, claudeApi *ClaudeApi, systemPromptSecondStep []byte, userStatusManager *UserStatusManager, ticker string, dbService *DatabaseService) {
+func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUDAlertNotification, twitterApi *twitterapi.TwitterAPIService, claudeApi *ClaudeApi, systemPromptSecondStep []byte, userStatusManager *UserStatusManager, ticker string, dbService *DatabaseService, loggingService *LoggingService) {
+	// Generate UUID for this request processing
+	requestUUID := uuid.New().String()
+
+	// Start request processing logging
+	if loggingService != nil {
+		loggingService.StartRequestProcessing(requestUUID, newMessage.Author.ID, newMessage.Author.UserName, newMessage.TweetID, PROCESSING_TYPE_DETAILED, 5)
+	}
+
 	// Check if we have cached analysis first (for non-manual analysis)
 	if !newMessage.IsManualAnalysis {
 		if cachedResult, err := dbService.GetCachedAnalysis(newMessage.Author.ID); err == nil {
@@ -57,10 +66,24 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 	}
 
 	// Get user's ticker mentions using advanced search (max 3 pages)
+	startTime := time.Now()
 	userTickerMentions := getUserTickerMentions(twitterApi, newMessage.Author.UserName, ticker, dbService)
+	collectionTime := int(time.Since(startTime).Milliseconds())
+
+	// Log ticker mentions data collection
+	if loggingService != nil {
+		dataCount := 0
+		if userTickerMentions != nil {
+			dataCount = len(userTickerMentions.Tweets)
+		}
+		loggingService.LogDataCollection(requestUUID, newMessage.Author.ID, newMessage.Author.UserName, DATA_TYPE_TICKER_MENTIONS, dataCount, 0, collectionTime, userTickerMentions != nil, "", fmt.Sprintf("{\"ticker\":\"%s\"}", ticker))
+	}
 
 	// Get user's community activity from database
+	startTime = time.Now()
 	userCommunityActivity, err := dbService.GetUserCommunityActivity(newMessage.Author.ID)
+	collectionTime = int(time.Since(startTime).Milliseconds())
+
 	if err != nil {
 		log.Printf("Error getting user community activity for %s: %v", newMessage.Author.UserName, err)
 		userCommunityActivity = &UserCommunityActivity{
@@ -69,8 +92,57 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 		}
 	}
 
+	// Log community activity data collection
+	if loggingService != nil {
+		dataCount := 0
+		if userCommunityActivity != nil {
+			dataCount = len(userCommunityActivity.ThreadGroups)
+		}
+		loggingService.LogDataCollection(requestUUID, newMessage.Author.ID, newMessage.Author.UserName, DATA_TYPE_COMMUNITY_ACTIVITY, dataCount, 0, collectionTime, err == nil, func() string {
+			if err != nil {
+				return err.Error()
+			}
+			return ""
+		}(), "")
+	}
+
+	// Get user's followers
+	startTime = time.Now()
 	followers, err := twitterApi.GetUserFollowers(twitterapi.UserFollowersRequest{UserName: newMessage.Author.UserName})
+	collectionTime = int(time.Since(startTime).Milliseconds())
+
+	// Log followers data collection
+	if loggingService != nil {
+		dataCount := 0
+		if followers != nil {
+			dataCount = len(followers.Followers)
+		}
+		loggingService.LogDataCollection(requestUUID, newMessage.Author.ID, newMessage.Author.UserName, DATA_TYPE_FOLLOWERS, dataCount, 0, collectionTime, err == nil, func() string {
+			if err != nil {
+				return err.Error()
+			}
+			return ""
+		}(), "")
+	}
+
+	// Get user's followings
+	startTime = time.Now()
 	followings, err := twitterApi.GetUserFollowings(twitterapi.UserFollowingsRequest{UserName: newMessage.Author.UserName})
+	collectionTime = int(time.Since(startTime).Milliseconds())
+
+	// Log followings data collection
+	if loggingService != nil {
+		dataCount := 0
+		if followings != nil {
+			dataCount = len(followings.Followings)
+		}
+		loggingService.LogDataCollection(requestUUID, newMessage.Author.ID, newMessage.Author.UserName, DATA_TYPE_FOLLOWING, dataCount, 0, collectionTime, err == nil, func() string {
+			if err != nil {
+				return err.Error()
+			}
+			return ""
+		}(), "")
+	}
 
 	// Save followers and followings to database
 	if followers != nil && len(followers.Followers) > 0 {
@@ -139,11 +211,28 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 	}
 	systemPromptModified += " analyzed user is " + newMessage.Author.UserName
 	systemTicker := os.Getenv(ENV_TWITTER_COMMUNITY_TICKER)
+
+	// Log AI request
+	startTime = time.Now()
 	resp, err := claudeApi.SendMessage(claudeMessages, systemPromptModified+"\nthe system ticker is:"+systemTicker+", it cannot be used for any criteria or flag about decision FUD or not")
+	processingTime := int(time.Since(startTime).Milliseconds())
+
+	if loggingService != nil {
+		loggingService.LogAIRequest(requestUUID, newMessage.Author.ID, newMessage.Author.UserName, newMessage.TweetID, REQUEST_TYPE_SECOND_STEP, 2, claudeMessages, resp, 0, processingTime, err == nil, func() string {
+			if err != nil {
+				return err.Error()
+			}
+			return ""
+		}())
+	}
+
 	aiDecision2 := SecondStepClaudeResponse{}
 	fmt.Println("claude make a decision for this user:", resp, err)
 
 	if err != nil {
+		if loggingService != nil {
+			loggingService.UpdateRequestProcessingStatus(requestUUID, PROCESSING_STATUS_FAILED, 4)
+		}
 		failManualAnalysisTask(newMessage, err, dbService)
 		log.Printf("error claude second step: %s", err)
 		return
@@ -293,6 +382,11 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 	// Complete manual analysis task if this was a manual analysis
 	if newMessage.IsManualAnalysis && newMessage.TaskID != "" {
 		completeManualAnalysisTask(newMessage, aiDecision2, dbService)
+	}
+
+	// Update request processing status as completed
+	if loggingService != nil {
+		loggingService.UpdateRequestProcessingStatus(requestUUID, PROCESSING_STATUS_COMPLETED, 5)
 	}
 }
 

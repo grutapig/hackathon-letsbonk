@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/grutapig/hackaton/twitterapi"
 	"github.com/joho/godotenv"
 	"log"
@@ -84,6 +85,23 @@ func main() {
 	defer dbService.Close()
 	log.Println("Database service initialized successfully")
 
+	// Initialize logging service
+	loggingDBPath := os.Getenv(ENV_LOGGING_DATABASE_PATH)
+	if loggingDBPath == "" {
+		loggingDBPath = "logs.db"
+	}
+	loggingService, err := NewLoggingService(loggingDBPath)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to initialize logging service: %v", err))
+	}
+	defer loggingService.Close()
+	log.Println("Logging service initialized successfully")
+
+	// Initialize cleanup scheduler
+	cleanupScheduler := NewCleanupScheduler(loggingService)
+	cleanupScheduler.Start()
+	defer cleanupScheduler.Stop()
+
 	// Check if we need to clear analysis flags on startup
 	if os.Getenv(ENV_CLEAR_ANALYSIS_ON_START) == "true" {
 		log.Println("Clearing all analysis flags on startup...")
@@ -101,6 +119,9 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to initialize telegram service: %v", err))
 	}
+
+	// Set logging service in telegram service
+	telegramService.SetLoggingService(loggingService)
 
 	// Initialize user status manager
 	userStatusManager := NewUserStatusManager()
@@ -131,13 +152,13 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		MonitoringHandler(twitterApi, newMessageCh, dbService)
+		MonitoringHandler(twitterApi, newMessageCh, dbService, loggingService)
 	}()
 	//handle new message first step
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		FirstStepHandler(newMessageCh, fudChannel, claudeApi, systemPromptFirstStep, userStatusManager, dbService, notificationCh)
+		FirstStepHandler(newMessageCh, fudChannel, claudeApi, systemPromptFirstStep, userStatusManager, dbService, loggingService, notificationCh)
 	}()
 	//handle fud messages with dynamic routing
 	wg.Add(1)
@@ -146,7 +167,7 @@ func main() {
 
 		for newMessage := range fudChannel {
 			log.Printf("Second step processing for user %s", newMessage.Author.UserName)
-			SecondStepHandler(newMessage, notificationCh, twitterApi, claudeApi, systemPromptSecondStep, userStatusManager, ticker, dbService)
+			SecondStepHandler(newMessage, notificationCh, twitterApi, claudeApi, systemPromptSecondStep, userStatusManager, ticker, dbService, loggingService)
 		}
 	}()
 	//notification handler
@@ -433,9 +454,9 @@ func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username st
 	return result
 }
 
-func SendIfNotExistsTweetToChannel(tweet twitterapi.Tweet, newMessageCh chan twitterapi.NewMessage, tweetsExistsStorage map[string]int, parentTweet twitterapi.Tweet, grandParentTweet twitterapi.Tweet) {
+func SendIfNotExistsTweetToChannel(tweet twitterapi.Tweet, newMessageCh chan twitterapi.NewMessage, tweetsExistsStorage map[string]int, parentTweet twitterapi.Tweet, grandParentTweet twitterapi.Tweet, loggingService *LoggingService) {
 	if _, ok := tweetsExistsStorage[tweet.Id]; !ok {
-		newMessageCh <- twitterapi.NewMessage{
+		newMessage := twitterapi.NewMessage{
 			TweetID:      tweet.Id,
 			ReplyTweetID: tweet.InReplyToId,
 			Author: struct {
@@ -459,5 +480,15 @@ func SendIfNotExistsTweetToChannel(tweet twitterapi.Tweet, newMessageCh chan twi
 			LikeCount:    tweet.LikeCount,
 			RetweetCount: tweet.RetweetCount,
 		}
+
+		// Log new message
+		if loggingService != nil {
+			err := loggingService.LogMessage(tweet.Id, tweet.Author.Id, tweet.Author.UserName, tweet.Text, TWEET_SOURCE_COMMUNITY, tweet.CreatedAt)
+			if err != nil {
+				log.Printf("Error logging message: %v", err)
+			}
+		}
+
+		newMessageCh <- newMessage
 	}
 }

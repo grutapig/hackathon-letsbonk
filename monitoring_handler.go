@@ -2,30 +2,55 @@ package main
 
 import (
 	"github.com/grutapig/hackaton/twitterapi"
+	"github.com/grutapig/hackaton/twitterapi_reverse"
 	"log"
 	"os"
+	"strconv"
 	"time"
 )
 
 // MonitoringHandler handles monitoring for new messages in community
-func MonitoringHandler(twitterApi *twitterapi.TwitterAPIService, newMessageCh chan twitterapi.NewMessage, dbService *DatabaseService) {
+func MonitoringHandler(twitterApi *twitterapi.TwitterAPIService, newMessageCh chan twitterapi.NewMessage, dbService *DatabaseService, loggingService *LoggingService) {
 	defer close(newMessageCh)
 
-	MonitoringIncremental(twitterApi, newMessageCh, dbService)
+	// Initialize reverse API service if enabled
+	var reverseService *twitterapi_reverse.TwitterReverseService
+	if enabled, _ := strconv.ParseBool(os.Getenv(ENV_TWITTER_REVERSE_ENABLED)); enabled {
+		auth := &twitterapi_reverse.TwitterAuth{
+			Authorization: os.Getenv(ENV_TWITTER_REVERSE_AUTHORIZATION),
+			XCSRFToken:    os.Getenv(ENV_TWITTER_REVERSE_CSRF_TOKEN),
+			Cookie:        os.Getenv(ENV_TWITTER_REVERSE_COOKIE),
+		}
+
+		// Only initialize if we have necessary auth data
+		if auth.Authorization != "" && auth.XCSRFToken != "" && auth.Cookie != "" {
+			reverseService = twitterapi_reverse.NewTwitterReverseService(auth, os.Getenv(ENV_PROXY_DSN), true)
+			log.Println("Twitter Reverse API service initialized")
+		} else {
+			log.Println("Twitter Reverse API enabled but missing authentication data")
+		}
+	}
+
+	MonitoringIncremental(twitterApi, newMessageCh, dbService, loggingService, reverseService)
 }
 
-func MonitoringIncremental(twitterApi *twitterapi.TwitterAPIService, newMessageCh chan twitterapi.NewMessage, dbService *DatabaseService) {
+func MonitoringIncremental(twitterApi *twitterapi.TwitterAPIService, newMessageCh chan twitterapi.NewMessage, dbService *DatabaseService, loggingService *LoggingService, reverseService *twitterapi_reverse.TwitterReverseService) {
 	// Local storage exists messages, with reply counts
 	tweetsExistsStorage := map[string]int{}
 
 	for {
 		time.Sleep(60 * time.Second)
-		tweetsResponse, err := twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
-			CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
-		})
+
+		// Try reverse API first, then fallback to original API
+		tweets, err := getCommunityTweetsWithFallback(reverseService, twitterApi, os.Getenv(ENV_DEMO_COMMUNITY_ID))
 		if err != nil {
-			log.Println(err)
+			log.Println("Error getting community tweets:", err)
 			continue
+		}
+
+		// Convert to original format for compatibility
+		tweetsResponse := &twitterapi.CommunityTweetsResponse{
+			Tweets: tweets,
 		}
 
 		// First time initialization
@@ -34,7 +59,7 @@ func MonitoringIncremental(twitterApi *twitterapi.TwitterAPIService, newMessageC
 
 			// Initialize mapping from 3 pages for monitoring
 			log.Println("Initializing monitoring mapping from 3 pages...")
-			InitializeMonitoringMapping(twitterApi, tweetsExistsStorage)
+			InitializeMonitoringMapping(twitterApi, tweetsExistsStorage, reverseService)
 
 			log.Printf("Monitoring initialization completed with %d tweets in storage", len(tweetsExistsStorage))
 			continue
@@ -45,7 +70,7 @@ func MonitoringIncremental(twitterApi *twitterapi.TwitterAPIService, newMessageC
 			// Store tweet and user data
 			storeTweetAndUser(dbService, tweet)
 
-			SendIfNotExistsTweetToChannel(tweet, newMessageCh, tweetsExistsStorage, twitterapi.Tweet{}, twitterapi.Tweet{})
+			SendIfNotExistsTweetToChannel(tweet, newMessageCh, tweetsExistsStorage, twitterapi.Tweet{}, twitterapi.Tweet{}, loggingService)
 			if tweet.ReplyCount > tweetsExistsStorage[tweet.Id] {
 				tweetsExistsStorage[tweet.Id] = tweet.ReplyCount
 				// Last page is enough for monitoring
@@ -96,7 +121,7 @@ func MonitoringIncremental(twitterApi *twitterapi.TwitterAPIService, newMessageC
 						parentTweet = tweet
 					}
 
-					SendIfNotExistsTweetToChannel(tweetReply, newMessageCh, tweetsExistsStorage, parentTweet, grandParentTweet)
+					SendIfNotExistsTweetToChannel(tweetReply, newMessageCh, tweetsExistsStorage, parentTweet, grandParentTweet, loggingService)
 					tweetsExistsStorage[tweetReply.Id] = tweetReply.ReplyCount
 				}
 			}
@@ -348,39 +373,27 @@ func FullCommunityLoad(twitterApi *twitterapi.TwitterAPIService, dbService *Data
 }
 
 // InitializeMonitoringMapping initializes the monitoring storage with tweets from 3 pages (for tracking new messages)
-func InitializeMonitoringMapping(twitterApi *twitterapi.TwitterAPIService, tweetsExistsStorage map[string]int) {
+func InitializeMonitoringMapping(twitterApi *twitterapi.TwitterAPIService, tweetsExistsStorage map[string]int, reverseService *twitterapi_reverse.TwitterReverseService) {
 	cursor := ""
 	pageCount := 0
 	maxPages := 3
 
 	for pageCount < maxPages {
-		var tweetsResponse *twitterapi.CommunityTweetsResponse
-		var err error
-
-		if cursor == "" {
-			tweetsResponse, err = twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
-				CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
-			})
-		} else {
-			tweetsResponse, err = twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
-				CommunityID: os.Getenv(ENV_DEMO_COMMUNITY_ID),
-				Cursor:      cursor,
-			})
-		}
-
+		// Try to get tweets with reverse API first
+		tweets, err := getCommunityTweetsWithFallback(reverseService, twitterApi, os.Getenv(ENV_DEMO_COMMUNITY_ID))
 		if err != nil {
 			log.Printf("Error fetching monitoring mapping page %d: %v", pageCount+1, err)
 			break
 		}
 
-		if len(tweetsResponse.Tweets) == 0 {
+		if len(tweets) == 0 {
 			log.Printf("No tweets found on monitoring mapping page %d", pageCount+1)
 			break
 		}
 
-		log.Printf("Processing monitoring mapping page %d with %d posts...", pageCount+1, len(tweetsResponse.Tweets))
+		log.Printf("Processing monitoring mapping page %d with %d posts...", pageCount+1, len(tweets))
 
-		for _, tweet := range tweetsResponse.Tweets {
+		for _, tweet := range tweets {
 			tweetsExistsStorage[tweet.Id] = tweet.ReplyCount
 
 			// Get replies for monitoring mapping
@@ -399,13 +412,71 @@ func InitializeMonitoringMapping(twitterApi *twitterapi.TwitterAPIService, tweet
 
 		pageCount++
 
-		// Check for next page
-		if tweetsResponse.NextCursor == "" {
-			log.Printf("No more pages available for monitoring mapping after page %d", pageCount)
+		// For now, we'll only do first page with reverse API since we don't have pagination support yet
+		if reverseService != nil {
+			log.Println("Reverse API doesn't support pagination yet, stopping after first page")
 			break
 		}
-		cursor = tweetsResponse.NextCursor
+
+		// Original API pagination support would go here
+		// For now we'll just break since we don't have the cursor from reverse API
+		break
 	}
 
 	log.Printf("Monitoring mapping initialized with %d tweets from %d pages", len(tweetsExistsStorage), pageCount)
+}
+
+// getCommunityTweetsWithFallback tries reverse API first, then falls back to original API
+func getCommunityTweetsWithFallback(reverseService *twitterapi_reverse.TwitterReverseService, twitterApi *twitterapi.TwitterAPIService, communityID string) ([]twitterapi.Tweet, error) {
+	// Try reverse API first if available
+	if reverseService != nil {
+		log.Println("Trying reverse API for community tweets...")
+		simpleTweets, err := reverseService.GetCommunityTweets(communityID, 20)
+		if err != nil {
+			log.Printf("Reverse API failed: %v, falling back to original API", err)
+		} else {
+			log.Printf("Reverse API success: got %d tweets", len(simpleTweets))
+			return convertSimpleTweetsToTweets(simpleTweets), nil
+		}
+	}
+
+	// Fallback to original API
+	log.Println("Using original API for community tweets...")
+	tweetsResponse, err := twitterApi.GetCommunityTweets(twitterapi.CommunityTweetsRequest{
+		CommunityID: communityID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return tweetsResponse.Tweets, nil
+}
+
+// convertSimpleTweetsToTweets converts reverse API SimpleTweet to original Tweet format
+func convertSimpleTweetsToTweets(simpleTweets []*twitterapi_reverse.SimpleTweet) []twitterapi.Tweet {
+	var tweets []twitterapi.Tweet
+
+	for _, simpleTweet := range simpleTweets {
+		var inReplyToId string
+		if simpleTweet.ReplyToID != nil {
+			inReplyToId = *simpleTweet.ReplyToID
+		}
+
+		tweet := twitterapi.Tweet{
+			Id:          simpleTweet.TweetID,
+			Text:        simpleTweet.Text,
+			CreatedAt:   simpleTweet.CreatedAt.Format("Mon Jan 02 15:04:05 -0700 2006"),
+			ReplyCount:  simpleTweet.RepliesCount,
+			InReplyToId: inReplyToId,
+			Author: twitterapi.Author{
+				Id:       simpleTweet.Author.ID,
+				UserName: simpleTweet.Author.Username,
+				Name:     simpleTweet.Author.Name,
+			},
+		}
+
+		tweets = append(tweets, tweet)
+	}
+
+	return tweets
 }
