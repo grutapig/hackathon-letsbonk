@@ -319,16 +319,12 @@ func (t *TelegramService) processUpdates() error {
 				go t.handleTop100AnalyzeCommand(chatID)
 			case command == "/batch_analyze":
 				go t.handleBatchAnalyzeCommand(chatID, args)
-			case command == "/analytics":
-				go t.handleLoggingAnalyticsCommand(chatID, int(messageID), args)
-			case command == "/cleanup":
-				go t.handleLoggingCleanupCommand(chatID, int(messageID), args)
 			case command == "/update_reverse_auth":
 				if !t.isAdminChat(chatID) {
 					go t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
 					continue
 				}
-				go t.handleUpdateReverseAuthCommand(chatID, strings.Join(args, " "))
+				go t.handleUpdateReverseAuthCommand(chatID, text)
 			case command == "/help" || command == "/start":
 				go t.handleHelpCommand(chatID)
 			default:

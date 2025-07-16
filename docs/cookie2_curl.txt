@@ -1,0 +1,21 @@
+curl 'https://x.com/i/api/graphql/Iv0sFFnvIpdYCm_uEqd1-Q/CommunitiesFetchOneQuery?variables=%7B%22communityId%22%3A%221489422448332197888%22%2C%22withDmMuting%22%3Afalse%7D&features=%7B%22payments_enabled%22%3Afalse%2C%22profile_label_improvements_pcf_label_in_post_enabled%22%3Atrue%2C%22responsive_web_graphql_skip_user_profile_image_extensions_enabled%22%3Afalse%2C%22responsive_web_graphql_timeline_navigation_enabled%22%3Atrue%2C%22rweb_tipjar_consumption_enabled%22%3Atrue%2C%22verified_phone_label_enabled%22%3Afalse%7D' \
+  -H 'accept: */*' \
+  -H 'accept-language: ru,ru-RU;q=0.9,en;q=0.8,de;q=0.7' \
+  -H 'authorization: Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA' \
+  -H 'content-type: application/json' \
+  -H 'cookie: guest_id=v1%3A174990743679700683; kdt=VyjqRm90YYPBhcsZAtJmEErahe60HqrUy3Wz0OAQ; auth_token=0323aebf3f717be2f83e09aa74af7959bb0cc93d; ct0=51dba875c98111e3adb18449d1812e64bdb0ad803a9d55db7b7538e5bf4a9582d67cad7c709beacb40af100c47f3c2740525cd4116e89f6d90bb86a0858fde79c5bcc2d9c505455b7e992c9347f2132a; twid=u%3D1933422372100472832; lang=en; d_prefs=MToxLGNvbnNlbnRfdmVyc2lvbjoyLHRleHRfdmVyc2lvbjoxMDAw; guest_id_ads=v1%3A174990743679700683; guest_id_marketing=v1%3A174990743679700683; personalization_id="v1_Uf/J0v5u1oDaJZxjON0d1w=="; __cf_bm=kfzHJOhFCYyjb6tr6l3ZgtKwgyL8tClaGJhPxgNv504-1752665330-1.0.1.1-FH0vfrzVgal81j40XacZ3xhTE05xa6ZsqqY3KB5jPoY2npN9NnhKrxDt5SMEBmWVX_ViROWlaKfufMsshN3OMzN5gjQngU8PQdnwcU62gBw' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://x.com/EricVv8740/communities/explore' \
+  -H 'sec-ch-ua: "Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "macOS"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-origin' \
+  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' \
+  -H 'x-client-transaction-id: b2F+ymZTGTORgeK5ruuxzVYMnw8bDaHPLKdQ32Cac531skRkh0p6z6PqSJi6xqJaaQxDR2uyQ+8Tm6gdE0G75Uon6yoWbA' \
+  -H 'x-csrf-token: 51dba875c98111e3adb18449d1812e64bdb0ad803a9d55db7b7538e5bf4a9582d67cad7c709beacb40af100c47f3c2740525cd4116e89f6d90bb86a0858fde79c5bcc2d9c505455b7e992c9347f2132a' \
+  -H 'x-twitter-active-user: yes' \
+  -H 'x-twitter-auth-type: OAuth2Session' \
+  -H 'x-twitter-client-language: en' \
+  -H 'x-xp-forwarded-for: 944913de752b13b48287abe403529f80b29f3cb361da107800d5157ffcc1d0b43ea0f1fd84713a3d891c1898464f7689a1931e534c48e8758ce0529b0077b3a6b3746df21d43356047acef31bd19045f61ce26da45b69ac0159705e2d2aff6bdebd1124f592abecba643ecca53744b40cfd4045450a532cdb55eb8a04b90256a1a494b25c3a59ce96fa15e3de2b9085d19463fbe9341d8472b537dde2794ae6bb684f36e9f470f55b06d198467d7bd7422d2c6837688536c48e1f2b11905bb79c6e96d7a7374055970835308370aecc164c66deedd9f28a3946e65c96ff810563922de24444de698ee7e52d92f0035cf0f5c7ff53725904d74f42a811a125a0c'

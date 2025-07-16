@@ -206,7 +206,7 @@ func (s *TwitterReverseService) GetTweetDetail(tweetID string) (*SimpleTweet, er
 	return convertTweetToSimple(tweets[0]), nil
 }
 
-func (s *TwitterReverseService) GetCommunityTweets(communityID string, count int) ([]*SimpleTweet, error) {
+func (s *TwitterReverseService) GetCommunityTweets(communityID string, count int) ([]SimpleTweet, error) {
 	variables := map[string]interface{}{
 		"communityId":     communityID,
 		"count":           count,
@@ -261,14 +261,32 @@ func (s *TwitterReverseService) GetCommunityTweets(communityID string, count int
 		return nil, err
 	}
 
-	tweets, err := ParseCommunityTweets(data)
+	communityTweetsResponse := CommunityTweetsResponse{}
+	err = json.Unmarshal(data, &communityTweetsResponse)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse community tweets response: %v", err)
+		return nil, fmt.Errorf("json unmarshal community tweets error. community: %s, err: %s", communityID, err)
 	}
-
-	var simpleTweets []*SimpleTweet
-	for _, tweet := range tweets {
-		simpleTweets = append(simpleTweets, convertTweetToSimple(tweet))
+	var simpleTweets []SimpleTweet
+	for _, instruction := range communityTweetsResponse.Data.CommunityResults.Result.RankedCommunityTimeline.Timeline.Instructions {
+		for _, tweet := range instruction.Entries {
+			date, err := parseTwitterTime(tweet.Content.ItemContent.TweetResults.Result.Legacy.CreatedAt)
+			if err != nil {
+				date = time.Time{}
+			}
+			simpleTweet := SimpleTweet{
+				TweetID:      tweet.Content.ItemContent.TweetResults.Result.RestId,
+				Text:         tweet.Content.ItemContent.TweetResults.Result.Legacy.FullText,
+				CreatedAt:    date,
+				ReplyToID:    nil,
+				RepliesCount: tweet.Content.ItemContent.TweetResults.Result.Legacy.ReplyCount,
+				Author: SimpleUser{
+					ID:       tweet.Content.ItemContent.TweetResults.Result.Legacy.UserIdStr,
+					Username: tweet.Content.ItemContent.TweetResults.Result.Core.UserResults.Result.Core.ScreenName,
+					Name:     tweet.Content.ItemContent.TweetResults.Result.Core.UserResults.Result.Core.Name,
+				},
+			}
+			simpleTweets = append(simpleTweets, simpleTweet)
+		}
 	}
 
 	return simpleTweets, nil
