@@ -1,6 +1,7 @@
 package twitterapi
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -262,4 +263,32 @@ func (s *TwitterAPIService) AdvancedSearch(request AdvancedSearchRequest) (*Adva
 	searchResponse := AdvancedSearchResponse{}
 	err = json.Unmarshal(response.RawBody, &searchResponse)
 	return &searchResponse, err
+}
+
+func (s *TwitterAPIService) PostTweet(request PostTweetRequest) (*PostTweetResponse, error) {
+	uri := s.baseUrl + "/twitter/create_tweet"
+	requestBody, _ := json.Marshal(request)
+	payload := bytes.NewReader(requestBody)
+
+	req, _ := http.NewRequest("POST", uri, payload)
+	req.Header.Set("X-API-Key", s.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error on post_tweet httpClient.Do: %s", err)
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error on post_tweet io.ReadAll: %s", err)
+	}
+
+	if res.StatusCode != 200 {
+		return nil, fmt.Errorf("error on post_tweet http status code is not 200: %d, body: %s", res.StatusCode, body)
+	}
+	fmt.Println(string(body))
+	postTweetResponse := PostTweetResponse{}
+	err = json.Unmarshal(body, &postTweetResponse)
+	return &postTweetResponse, err
 }

@@ -26,6 +26,8 @@ const ENV_TWITTER_REVERSE_AUTHORIZATION = "twitter_reverse_authorization"
 const ENV_TWITTER_REVERSE_CSRF_TOKEN = "twitter_reverse_csrf_token"
 const ENV_TWITTER_REVERSE_COOKIE = "twitter_reverse_cookie"
 const ENV_TWITTER_REVERSE_ENABLED = "twitter_reverse_enabled"
+const ENV_TWITTER_AUTH = "twitter_auth"
+const ENV_TWITTER_BOT_TAG = "twitter_bot_tag"
 
 // Monitoring method constants
 const MONITORING_METHOD_INCREMENTAL = "incremental"

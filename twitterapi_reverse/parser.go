@@ -95,7 +95,7 @@ func ParseCommunityTweets(data []byte) ([]Tweet, error) {
 
 			createdAtPath := []string{"legacy", "created_at"}
 			if createdAtStr, err := jsonparser.GetString(tweetResultsData, createdAtPath...); err == nil {
-				if parsedTime, err := parseTwitterTime(createdAtStr); err == nil {
+				if parsedTime, err := ParseTwitterTime(createdAtStr); err == nil {
 					tweet.CreatedAt = parsedTime
 				} else {
 					log.Println("some error8", err)
@@ -132,7 +132,7 @@ func ParseCommunityTweets(data []byte) ([]Tweet, error) {
 
 			authorCreatedAtPath := []string{"core", "created_at"}
 			if authorCreatedAtStr, err := jsonparser.GetString(authorData, authorCreatedAtPath...); err == nil {
-				if parsedTime, err := parseTwitterTime(authorCreatedAtStr); err == nil {
+				if parsedTime, err := ParseTwitterTime(authorCreatedAtStr); err == nil {
 					tweet.Author.CreatedAt = parsedTime
 				} else {
 					parseErrors = append(parseErrors, fmt.Sprintf("Failed to parse author created_at time '%s': %v", authorCreatedAtStr, err))
@@ -273,7 +273,7 @@ func parseTweetData(tweetResultsData []byte, parseErrors *[]string) Tweet {
 
 	createdAtPath := []string{"legacy", "created_at"}
 	if createdAtStr, err := jsonparser.GetString(tweetResultsData, createdAtPath...); err == nil {
-		if parsedTime, err := parseTwitterTime(createdAtStr); err == nil {
+		if parsedTime, err := ParseTwitterTime(createdAtStr); err == nil {
 			tweet.CreatedAt = parsedTime
 		} else {
 			log.Println("created_at parse error", err)
@@ -310,7 +310,7 @@ func parseTweetData(tweetResultsData []byte, parseErrors *[]string) Tweet {
 
 	authorCreatedAtPath := []string{"core", "created_at"}
 	if authorCreatedAtStr, err := jsonparser.GetString(authorData, authorCreatedAtPath...); err == nil {
-		if parsedTime, err := parseTwitterTime(authorCreatedAtStr); err == nil {
+		if parsedTime, err := ParseTwitterTime(authorCreatedAtStr); err == nil {
 			tweet.Author.CreatedAt = parsedTime
 		} else {
 			*parseErrors = append(*parseErrors, fmt.Sprintf("Failed to parse author created_at time '%s': %v", authorCreatedAtStr, err))
@@ -322,7 +322,7 @@ func parseTweetData(tweetResultsData []byte, parseErrors *[]string) Tweet {
 	return tweet
 }
 
-func parseTwitterTime(timeStr string) (time.Time, error) {
+func ParseTwitterTime(timeStr string) (time.Time, error) {
 	layout := "Mon Jan 02 15:04:05 -0700 2006"
 	return time.Parse(layout, timeStr)
 }

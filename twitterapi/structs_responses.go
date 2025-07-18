@@ -1,5 +1,7 @@
 package twitterapi
 
+import "time"
+
 type APIResponse struct {
 	StatusCode int                 `json:"status_code"`
 	Headers    map[string][]string `json:"headers"`
@@ -68,18 +70,19 @@ type Author struct {
 }
 
 type Tweet struct {
-	Type              string      `json:"type"`
-	Id                string      `json:"id"`
-	Url               string      `json:"url"`
-	TwitterUrl        string      `json:"twitterUrl"`
-	Text              string      `json:"text"`
-	Source            string      `json:"source"`
-	RetweetCount      int         `json:"retweetCount"`
-	ReplyCount        int         `json:"replyCount"`
-	LikeCount         int         `json:"likeCount"`
-	QuoteCount        int         `json:"quoteCount"`
-	ViewCount         int         `json:"viewCount"`
-	CreatedAt         string      `json:"createdAt"`
+	Type              string `json:"type"`
+	Id                string `json:"id"`
+	Url               string `json:"url"`
+	TwitterUrl        string `json:"twitterUrl"`
+	Text              string `json:"text"`
+	Source            string `json:"source"`
+	RetweetCount      int    `json:"retweetCount"`
+	ReplyCount        int    `json:"replyCount"`
+	LikeCount         int    `json:"likeCount"`
+	QuoteCount        int    `json:"quoteCount"`
+	ViewCount         int    `json:"viewCount"`
+	CreatedAt         string `json:"createdAt"`
+	CreatedAtParsed   time.Time
 	Lang              string      `json:"lang"`
 	BookmarkCount     int         `json:"bookmarkCount"`
 	IsReply           bool        `json:"isReply"`
@@ -247,4 +250,17 @@ type AdvancedSearchResponse struct {
 	Status      string  `json:"status"`
 	Msg         string  `json:"msg"`
 	Code        int     `json:"code"`
+}
+type PostTweetResponse struct {
+	Status string `json:"status"`
+	Msg    string `json:"msg"`
+	Data   struct {
+		CreateTweet struct {
+			TweetResult struct {
+				Result struct {
+					RestId string `json:"rest_id"`
+				} `json:"result"`
+			} `json:"tweet_result"`
+		} `json:"create_tweet"`
+	} `json:"data"`
 }

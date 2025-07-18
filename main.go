@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/google/uuid"
 	"github.com/grutapig/hackaton/twitterapi"
+	"github.com/grutapig/hackaton/twitterapi_reverse"
 	"github.com/joho/godotenv"
 	"log"
 	"os"
@@ -15,7 +15,7 @@ import (
 
 const ENV_PROD_CONFIG = ".env"
 const ENV_DEV_CONFIG = ".dev.env"
-const PROMPT_FILE_STEP1 = "prompt1.txt"
+const PROMPT_FILE_STEP1 = "prompt_simple.txt"
 const PROMPT_FILE_STEP2 = "prompt2.txt"
 
 func main() {
@@ -85,6 +85,10 @@ func main() {
 	defer dbService.Close()
 	log.Println("Database service initialized successfully")
 
+	// Initialize Twitter bot service
+	twitterBotService := NewTwitterBotService(twitterApi, claudeApi, dbService)
+	log.Println("Twitter bot service initialized successfully")
+
 	// Initialize logging service
 	loggingDBPath := os.Getenv(ENV_LOGGING_DATABASE_PATH)
 	if loggingDBPath == "" {
@@ -120,9 +124,6 @@ func main() {
 		panic(fmt.Sprintf("Failed to initialize telegram service: %v", err))
 	}
 
-	// Set logging service in telegram service
-	telegramService.SetLoggingService(loggingService)
-
 	// Initialize user status manager
 	userStatusManager := NewUserStatusManager()
 	userStatusManager.StartPeriodicSave()
@@ -144,6 +145,10 @@ func main() {
 	}
 	//init channels
 	newMessageCh := make(chan twitterapi.NewMessage, 10)
+	//first step processing channel
+	firstStepCh := make(chan twitterapi.NewMessage, 10)
+	//broadcast channel for twitter bot
+	twitterBotCh := make(chan twitterapi.NewMessage, 10)
 	//notification channel
 	notificationCh := make(chan FUDAlertNotification, 30)
 
@@ -154,11 +159,33 @@ func main() {
 		defer wg.Done()
 		MonitoringHandler(twitterApi, newMessageCh, dbService, loggingService)
 	}()
+	//broadcast messages to multiple channels
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(firstStepCh)
+		defer close(twitterBotCh)
+		for message := range newMessageCh {
+			// Send to first step handler
+			select {
+			case firstStepCh <- message:
+			default:
+				log.Printf("First step channel full, skipping message %s", message.TweetID)
+			}
+			// Send to twitter bot handler
+			select {
+			case twitterBotCh <- message:
+			default:
+				log.Printf("Twitter bot channel full, skipping message %s", message.TweetID)
+			}
+		}
+	}()
+
 	//handle new message first step
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		FirstStepHandler(newMessageCh, fudChannel, claudeApi, systemPromptFirstStep, userStatusManager, dbService, loggingService, notificationCh)
+		FirstStepHandler(firstStepCh, fudChannel, claudeApi, systemPromptFirstStep, userStatusManager, dbService, loggingService, notificationCh)
 	}()
 	//handle fud messages with dynamic routing
 	wg.Add(1)
@@ -176,6 +203,14 @@ func main() {
 		defer wg.Done()
 		NotificationHandler(notificationCh, telegramService)
 	}()
+
+	// Twitter bot mention listener
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		twitterBotService.StartMentionListener(twitterBotCh)
+	}()
+
 	// Cleanup
 	defer userStatusManager.StopPeriodicSave()
 	wg.Wait()
@@ -480,10 +515,11 @@ func SendIfNotExistsTweetToChannel(tweet twitterapi.Tweet, newMessageCh chan twi
 			LikeCount:    tweet.LikeCount,
 			RetweetCount: tweet.RetweetCount,
 		}
-
+		tweet.CreatedAtParsed, _ = twitterapi_reverse.ParseTwitterTime(tweet.CreatedAt)
+		newMessage.CreatedAtParsed = tweet.CreatedAtParsed
 		// Log new message
 		if loggingService != nil {
-			err := loggingService.LogMessage(tweet.Id, tweet.Author.Id, tweet.Author.UserName, tweet.Text, TWEET_SOURCE_COMMUNITY, tweet.CreatedAt)
+			err := loggingService.LogMessage(tweet.Id, tweet.Author.Id, tweet.Author.UserName, tweet.Text, TWEET_SOURCE_COMMUNITY, tweet.CreatedAtParsed)
 			if err != nil {
 				log.Printf("Error logging message: %v", err)
 			}

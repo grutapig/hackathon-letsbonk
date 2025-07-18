@@ -39,9 +39,10 @@ type NewMessage struct {
 		Name     string
 		ID       string
 	}
-	Text        string
-	CreatedAt   string
-	ParentTweet struct {
+	Text            string
+	CreatedAt       string
+	CreatedAtParsed time.Time
+	ParentTweet     struct {
 		ID     string
 		Author string
 		Text   string
@@ -58,6 +59,14 @@ type NewMessage struct {
 	ForceNotification bool
 	TaskID            string // For tracking manual analysis progress
 	TelegramChatID    int64  // Optional: if set, send notification only to this chat
+}
+type PostTweetRequest struct {
+	AuthSession      string `json:"auth_session"`
+	TweetText        string `json:"tweet_text"`
+	QuoteTweetId     string `json:"quote_tweet_id"`
+	InReplyToTweetId string `json:"in_reply_to_tweet_id"`
+	MediaId          string `json:"media_id"`
+	Proxy            string `json:"proxy"`
 }
 
 const (

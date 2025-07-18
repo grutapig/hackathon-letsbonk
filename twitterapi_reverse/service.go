@@ -268,8 +268,9 @@ func (s *TwitterReverseService) GetCommunityTweets(communityID string, count int
 	}
 	var simpleTweets []SimpleTweet
 	for _, instruction := range communityTweetsResponse.Data.CommunityResults.Result.RankedCommunityTimeline.Timeline.Instructions {
-		for _, tweet := range instruction.Entries {
-			date, err := parseTwitterTime(tweet.Content.ItemContent.TweetResults.Result.Legacy.CreatedAt)
+		if instruction.Entry.EntryId != "" {
+			tweet := instruction.Entry
+			date, err := ParseTwitterTime(tweet.Content.ItemContent.TweetResults.Result.Legacy.CreatedAt)
 			if err != nil {
 				date = time.Time{}
 			}
@@ -286,6 +287,27 @@ func (s *TwitterReverseService) GetCommunityTweets(communityID string, count int
 				},
 			}
 			simpleTweets = append(simpleTweets, simpleTweet)
+		}
+		for _, tweet := range instruction.Entries {
+			date, err := ParseTwitterTime(tweet.Content.ItemContent.TweetResults.Result.Legacy.CreatedAt)
+			if err != nil {
+				date = time.Time{}
+			}
+			simpleTweet := SimpleTweet{
+				TweetID:      tweet.Content.ItemContent.TweetResults.Result.RestId,
+				Text:         tweet.Content.ItemContent.TweetResults.Result.Legacy.FullText,
+				CreatedAt:    date,
+				ReplyToID:    nil,
+				RepliesCount: tweet.Content.ItemContent.TweetResults.Result.Legacy.ReplyCount,
+				Author: SimpleUser{
+					ID:       tweet.Content.ItemContent.TweetResults.Result.Legacy.UserIdStr,
+					Username: tweet.Content.ItemContent.TweetResults.Result.Core.UserResults.Result.Core.ScreenName,
+					Name:     tweet.Content.ItemContent.TweetResults.Result.Core.UserResults.Result.Core.Name,
+				},
+			}
+			if simpleTweet.TweetID != "" {
+				simpleTweets = append(simpleTweets, simpleTweet)
+			}
 		}
 	}
 

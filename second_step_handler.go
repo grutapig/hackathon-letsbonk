@@ -74,7 +74,7 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 	if loggingService != nil {
 		dataCount := 0
 		if userTickerMentions != nil {
-			dataCount = len(userTickerMentions.Tweets)
+			dataCount = len(userTickerMentions.UserMessages)
 		}
 		loggingService.LogDataCollection(requestUUID, newMessage.Author.ID, newMessage.Author.UserName, DATA_TYPE_TICKER_MENTIONS, dataCount, 0, collectionTime, userTickerMentions != nil, "", fmt.Sprintf("{\"ticker\":\"%s\"}", ticker))
 	}

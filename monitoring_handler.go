@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/grutapig/hackaton/twitterapi"
 	"github.com/grutapig/hackaton/twitterapi_reverse"
 	"log"
@@ -24,7 +25,7 @@ func MonitoringHandler(twitterApi *twitterapi.TwitterAPIService, newMessageCh ch
 
 		// Only initialize if we have necessary auth data
 		if auth.Authorization != "" && auth.XCSRFToken != "" && auth.Cookie != "" {
-			reverseService = twitterapi_reverse.NewTwitterReverseService(auth, os.Getenv(ENV_PROXY_DSN), true)
+			reverseService = twitterapi_reverse.NewTwitterReverseService(auth, os.Getenv(ENV_PROXY_DSN), false)
 			log.Println("Twitter Reverse API service initialized")
 		} else {
 			log.Println("Twitter Reverse API enabled but missing authentication data")
@@ -39,7 +40,7 @@ func MonitoringIncremental(twitterApi *twitterapi.TwitterAPIService, newMessageC
 	tweetsExistsStorage := map[string]int{}
 
 	for {
-		time.Sleep(60 * time.Second)
+		time.Sleep(30 * time.Second)
 
 		// Try reverse API first, then fallback to original API
 		tweets, err := getCommunityTweetsWithFallback(reverseService, twitterApi, os.Getenv(ENV_DEMO_COMMUNITY_ID))
@@ -374,7 +375,6 @@ func FullCommunityLoad(twitterApi *twitterapi.TwitterAPIService, dbService *Data
 
 // InitializeMonitoringMapping initializes the monitoring storage with tweets from 3 pages (for tracking new messages)
 func InitializeMonitoringMapping(twitterApi *twitterapi.TwitterAPIService, tweetsExistsStorage map[string]int, reverseService *twitterapi_reverse.TwitterReverseService) {
-	cursor := ""
 	pageCount := 0
 	maxPages := 3
 
@@ -452,8 +452,7 @@ func getCommunityTweetsWithFallback(reverseService *twitterapi_reverse.TwitterRe
 	return tweetsResponse.Tweets, nil
 }
 
-// convertSimpleTweetsToTweets converts reverse API SimpleTweet to original Tweet format
-func convertSimpleTweetsToTweets(simpleTweets []*twitterapi_reverse.SimpleTweet) []twitterapi.Tweet {
+func convertSimpleTweetsToTweets(simpleTweets []twitterapi_reverse.SimpleTweet) []twitterapi.Tweet {
 	var tweets []twitterapi.Tweet
 
 	for _, simpleTweet := range simpleTweets {
@@ -463,18 +462,19 @@ func convertSimpleTweetsToTweets(simpleTweets []*twitterapi_reverse.SimpleTweet)
 		}
 
 		tweet := twitterapi.Tweet{
-			Id:          simpleTweet.TweetID,
-			Text:        simpleTweet.Text,
-			CreatedAt:   simpleTweet.CreatedAt.Format("Mon Jan 02 15:04:05 -0700 2006"),
-			ReplyCount:  simpleTweet.RepliesCount,
-			InReplyToId: inReplyToId,
+			Id:              simpleTweet.TweetID,
+			Text:            simpleTweet.Text,
+			CreatedAt:       simpleTweet.CreatedAt.Format("Mon Jan 02 15:04:05 -0700 2006"),
+			CreatedAtParsed: simpleTweet.CreatedAt,
+			ReplyCount:      simpleTweet.RepliesCount,
+			InReplyToId:     inReplyToId,
 			Author: twitterapi.Author{
 				Id:       simpleTweet.Author.ID,
 				UserName: simpleTweet.Author.Username,
 				Name:     simpleTweet.Author.Name,
 			},
 		}
-
+		fmt.Println("tweet:", tweet.Id, tweet.Text, tweet.Author.Id, tweet.Author.UserName, tweet.Author.Name, "reply", tweet.ReplyCount)
 		tweets = append(tweets, tweet)
 	}
 
