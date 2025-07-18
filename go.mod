@@ -17,5 +17,6 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/mattn/go-sqlite3 v1.14.17 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	go.uber.org/dig v1.19.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

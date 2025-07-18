@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/grutapig/hackaton/twitterapi"
 )
@@ -44,19 +43,26 @@ func (s *TwitterBotService) ProcessMentionTweet(message twitterapi.NewMessage) {
 	// First Claude request to analyze the message
 	analysisPrompt := fmt.Sprintf("Analyze this tweet for questions or requests: %s", message.Text)
 
-	analysisResponse, err := s.claudeAPI.SendRequest(analysisPrompt, "")
+	claudeMessages := ClaudeMessages{
+		{
+			Role:    "user",
+			Content: analysisPrompt,
+		},
+	}
+
+	analysisResponse, err := s.claudeAPI.SendMessage(claudeMessages, "")
 	if err != nil {
 		log.Printf("Failed to analyze tweet: %v", err)
 		return
 	}
 
-	log.Printf("Analysis response: %s", analysisResponse)
+	log.Printf("Analysis response: %s", analysisResponse.Content[0].Text)
 
 	// Check if user is in FUD database
-	var fudUser *FUDUser
-	users, err := s.databaseService.SearchFUDUsers(message.Author.UserName, "", 1)
-	if err == nil && len(users) > 0 {
-		fudUser = &users[0]
+	var fudUser *FUDUserModel
+	fudUser, err = s.databaseService.GetFUDUser(message.Author.ID)
+	if err != nil {
+		log.Printf("User not found in FUD database: %v", err)
 	}
 
 	// Prepare context for response generation
@@ -73,13 +79,22 @@ func (s *TwitterBotService) ProcessMentionTweet(message twitterapi.NewMessage) {
 Tweet analysis: %s
 Original tweet: %s
 
-Respond in 180 characters or less. Do not use JSON format, just plain text.`, contextInfo, analysisResponse, message.Text)
+Respond in 180 characters or less. Do not use JSON format, just plain text.`, contextInfo, analysisResponse.Content[0].Text, message.Text)
 
-	responseText, err := s.claudeAPI.SendRequest(responsePrompt, "")
+	responseMessages := ClaudeMessages{
+		{
+			Role:    "user",
+			Content: responsePrompt,
+		},
+	}
+
+	responseResult, err := s.claudeAPI.SendMessage(responseMessages, "")
 	if err != nil {
 		log.Printf("Failed to generate response: %v", err)
 		return
 	}
+
+	responseText := responseResult.Content[0].Text
 
 	// Limit response to 180 characters
 	if len(responseText) > 180 {
@@ -110,7 +125,7 @@ func (s *TwitterBotService) PostReplyTweet(text, replyToID string) error {
 		return fmt.Errorf("failed to post tweet: %w", err)
 	}
 
-	log.Printf("Posted tweet with ID: %s", response.TweetID)
+	log.Printf("Posted tweet with ID: %s", response.Data.CreateTweet.TweetResult.Result.RestId)
 	return nil
 }
 
