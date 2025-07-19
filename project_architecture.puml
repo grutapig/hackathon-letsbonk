@@ -1,0 +1,156 @@
+@startuml FUD_Detection_System_Architecture
+
+!theme plain
+skinparam backgroundColor white
+skinparam componentStyle rectangle
+skinparam defaultTextAlignment center
+
+title FUD Detection System - Complete Architecture
+
+package "External APIs" {
+    [Twitter API] as TwitterAPI
+    [Claude AI API] as ClaudeAPI
+    [Telegram Bot API] as TelegramAPI
+}
+
+package "Main Application" {
+    [main.go] as Main
+    [app.go] as App
+    [container.go] as Container
+    [config.go] as Config
+}
+
+package "Core Services" {
+    [Twitter API Service] as TwitterService
+    [Claude API Client] as ClaudeClient
+    [Telegram Service] as TelegramService
+    [Database Service] as DatabaseService
+    [Logging Service] as LoggingService
+    [Twitter Bot Service] as TwitterBotService
+    [Cleanup Scheduler] as CleanupScheduler
+}
+
+package "Monitoring & Analysis" {
+    [Monitoring Handler] as MonitoringHandler
+    [First Step Handler] as FirstStepHandler
+    [Second Step Handler] as SecondStepHandler
+    [Notification Handler] as NotificationHandler
+}
+
+package "Data Storage" {
+    database SQLite as DB {
+        [tweets] as TweetsTable
+        [users] as UsersTable
+        [fud_users] as FudUsersTable
+        [user_relations] as UserRelationsTable
+        [analysis_tasks] as AnalysisTasksTable
+        [cached_analysis] as CachedAnalysisTable
+        [user_ticker_opinions] as UserTickerOpinionsTable
+    }
+    
+    database "Logs SQLite" as LogsDB {
+        [messages] as MessagesTable
+        [user_activities] as UserActivitiesTable
+        [ai_requests] as AIRequestsTable
+        [data_collections] as DataCollectionsTable
+        [request_processing] as RequestProcessingTable
+    }
+}
+
+package "Data Processing Channels" {
+    queue "NewMessageCh" as NewMessageCh
+    queue "FirstStepCh" as FirstStepCh
+    queue "FudCh" as FudCh
+    queue "NotificationCh" as NotificationCh
+    queue "TwitterBotCh" as TwitterBotCh
+}
+
+package "Twitter Reverse API" {
+    [Twitter Reverse Service] as TwitterReverseService
+    [Parser] as ReverseParser
+    [Auth] as ReverseAuth
+}
+
+package "Utilities" {
+    [CSV Importer] as CSVImporter
+    [Notification Formatter] as NotificationFormatter
+}
+
+' Main application flow
+Main --> Container : Build DI Container
+Container --> App : Create Application
+App --> Config : Load Configuration
+
+' Dependency injection connections
+Container --> TwitterService
+Container --> ClaudeClient
+Container --> TelegramService
+Container --> DatabaseService
+Container --> LoggingService
+Container --> TwitterBotService
+Container --> CleanupScheduler
+
+' External API connections
+TwitterService --> TwitterAPI : HTTP Requests
+ClaudeClient --> ClaudeAPI : HTTP Requests
+TelegramService --> TelegramAPI : HTTP Requests
+TwitterReverseService --> TwitterAPI : Direct HTTP
+
+' Data flow through channels
+MonitoringHandler --> NewMessageCh : Send new messages
+NewMessageCh --> FirstStepHandler : First analysis
+NewMessageCh --> TwitterBotService : Bot mentions
+FirstStepHandler --> FudCh : Flagged messages
+FudCh --> SecondStepHandler : Detailed analysis
+SecondStepHandler --> NotificationCh : FUD alerts
+NotificationCh --> NotificationHandler : Process alerts
+
+' Service interactions
+MonitoringHandler --> TwitterService : Get community tweets
+MonitoringHandler --> TwitterReverseService : Alternative API
+MonitoringHandler --> DatabaseService : Store tweets/users
+MonitoringHandler --> LoggingService : Log activities
+
+FirstStepHandler --> ClaudeClient : AI analysis
+FirstStepHandler --> DatabaseService : Track user status
+FirstStepHandler --> DatabaseService : Check user history
+FirstStepHandler --> LoggingService : Log AI requests
+
+SecondStepHandler --> TwitterService : Get user data
+SecondStepHandler --> ClaudeClient : Deep AI analysis
+SecondStepHandler --> DatabaseService : Store results
+SecondStepHandler --> DatabaseService : Update user status
+SecondStepHandler --> LoggingService : Log processing
+
+NotificationHandler --> TelegramService : Send alerts
+TelegramService --> NotificationFormatter : Format messages
+TelegramService --> DatabaseService : Query data
+
+' Database connections
+DatabaseService --> DB : GORM ORM
+LoggingService --> LogsDB : Direct SQL
+
+' Reverse API components
+TwitterReverseService --> ReverseParser : Parse responses
+TwitterReverseService --> ReverseAuth : Authentication
+
+' Utility connections
+CSVImporter --> DatabaseService : Import data
+NotificationFormatter --> TelegramService : Message formatting
+
+' Background processes
+CleanupScheduler --> LoggingService : Cleanup old data
+
+' Data flow annotations
+note right of NewMessageCh : Buffered channel (10)
+note right of FudCh : Buffered channel (30)
+note right of NotificationCh : Buffered channel (30)
+
+note bottom of DB : Main application data\nTweets, Users, FUD analysis\nUser status management
+note bottom of LogsDB : Analytics and monitoring\nAI requests, performance metrics
+
+note top of MonitoringHandler : Two monitoring modes:\n- Incremental (default)\n- Full scan
+note top of FirstStepHandler : Quick FUD screening\nwith thread context
+note top of SecondStepHandler : Comprehensive analysis:\n- Ticker mentions\n- Social network analysis\n- Historical behavior
+
+@enduml

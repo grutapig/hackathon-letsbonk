@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUDAlertNotification, twitterApi *twitterapi.TwitterAPIService, claudeApi *ClaudeApi, systemPromptSecondStep []byte, userStatusManager *UserStatusManager, ticker string, dbService *DatabaseService, loggingService *LoggingService) {
+func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUDAlertNotification, twitterApi *twitterapi.TwitterAPIService, claudeApi *ClaudeApi, systemPromptSecondStep []byte, ticker string, dbService *DatabaseService, loggingService *LoggingService) {
 	// Generate UUID for this request processing
 	requestUUID := uuid.New().String()
 
@@ -28,7 +28,7 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 			aiDecision2 := *cachedResult
 
 			// Update user status with cached result
-			userStatusManager.UpdateUserAfterAnalysis(newMessage.Author.ID, newMessage.Author.UserName, aiDecision2, newMessage.TweetID)
+			dbService.UpdateUserAfterAnalysis(newMessage.Author.ID, newMessage.Author.UserName, aiDecision2, newMessage.TweetID)
 
 			// If user is not FUD but was previously marked as FUD, remove from FUD list
 			if !aiDecision2.IsFUDUser {
@@ -190,7 +190,7 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 	}
 
 	// Prepare claude request with community activity
-	claudeMessages := PrepareClaudeSecondStepRequest(userTickerMentions, followers, followings, userStatusManager, userCommunityActivity)
+	claudeMessages := PrepareClaudeSecondStepRequest(userTickerMentions, followers, followings, dbService, userCommunityActivity)
 
 	// Add thread context in order: grandparent -> parent -> current
 	if newMessage.GrandParentTweet.ID != "" {
@@ -247,7 +247,7 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 	fmt.Println(string(pretty))
 
 	// Update user status after analysis
-	userStatusManager.UpdateUserAfterAnalysis(newMessage.Author.ID, newMessage.Author.UserName, aiDecision2, newMessage.TweetID)
+	dbService.UpdateUserAfterAnalysis(newMessage.Author.ID, newMessage.Author.UserName, aiDecision2, newMessage.TweetID)
 
 	// If user is not FUD but was previously marked as FUD, remove from FUD list
 	if !aiDecision2.IsFUDUser {

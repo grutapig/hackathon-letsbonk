@@ -28,14 +28,20 @@ func (TweetModel) TableName() string {
 // User model for database storage
 type UserModel struct {
 	gorm.Model
-	ID               string    `gorm:"primaryKey;column:id" json:"id"`
-	Username         string    `gorm:"column:username;uniqueIndex" json:"username"`
-	Name             string    `gorm:"column:name" json:"name"`
-	IsFUD            bool      `gorm:"column:is_fud;default:false" json:"is_fud"`
-	FUDType          string    `gorm:"column:fud_type" json:"fud_type,omitempty"`
-	IsDetailAnalyzed bool      `gorm:"column:is_detail_analyzed;default:false" json:"is_detail_analyzed"` // Has user been through detailed analysis
-	CreatedAt        time.Time `gorm:"column:created_at" json:"created_at"`
-	UpdatedAt        time.Time `gorm:"column:updated_at" json:"updated_at"`
+	ID               string     `gorm:"primaryKey;column:id" json:"id"`
+	Username         string     `gorm:"column:username;uniqueIndex" json:"username"`
+	Name             string     `gorm:"column:name" json:"name"`
+	IsFUD            bool       `gorm:"column:is_fud;default:false" json:"is_fud"`
+	FUDType          string     `gorm:"column:fud_type" json:"fud_type,omitempty"`
+	FUDProbability   float64    `gorm:"column:fud_probability;default:0" json:"fud_probability"`
+	IsDetailAnalyzed bool       `gorm:"column:is_detail_analyzed;default:false" json:"is_detail_analyzed"` // Has user been through detailed analysis
+	Status           string     `gorm:"column:status;default:'unknown'" json:"status"`                     // unknown, clean, fud_confirmed, analyzing
+	LastAnalyzedAt   *time.Time `gorm:"column:last_analyzed_at" json:"last_analyzed_at,omitempty"`
+	LastMessageID    string     `gorm:"column:last_message_id" json:"last_message_id,omitempty"`
+	AnalysisCount    int        `gorm:"column:analysis_count;default:0" json:"analysis_count"`
+	FUDMessageCount  int        `gorm:"column:fud_message_count;default:0" json:"fud_message_count"`
+	CreatedAt        time.Time  `gorm:"column:created_at" json:"created_at"`
+	UpdatedAt        time.Time  `gorm:"column:updated_at" json:"updated_at"`
 }
 
 func (UserModel) TableName() string {
@@ -189,3 +195,11 @@ type UserTickerOpinionModel struct {
 func (UserTickerOpinionModel) TableName() string {
 	return "user_ticker_opinions"
 }
+
+// User status constants (moved from user_status_manager.go)
+const (
+	USER_STATUS_UNKNOWN       = "unknown"
+	USER_STATUS_CLEAN         = "clean"
+	USER_STATUS_FUD_CONFIRMED = "fud_confirmed"
+	USER_STATUS_ANALYZING     = "analyzing"
+)

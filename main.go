@@ -14,8 +14,8 @@ import (
 
 const ENV_PROD_CONFIG = ".env"
 const ENV_DEV_CONFIG = ".dev.env"
-const PROMPT_FILE_STEP1 = "prompt_simple.txt"
-const PROMPT_FILE_STEP2 = "prompt2.txt"
+const PROMPT_FILE_STEP1 = "data/txt/prompt_simple.txt"
+const PROMPT_FILE_STEP2 = "data/txt/prompt2.txt"
 
 func main() {
 	// Parse command line flags
@@ -120,7 +120,7 @@ func initializeData(dbService *DatabaseService, twitterApi *twitterapi.TwitterAP
 	}
 }
 
-func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, followers *twitterapi.UserFollowersResponse, followings *twitterapi.UserFollowingsResponse, userStatusManager *UserStatusManager, communityActivity *UserCommunityActivity) ClaudeMessages {
+func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, followers *twitterapi.UserFollowersResponse, followings *twitterapi.UserFollowingsResponse, dbService *DatabaseService, communityActivity *UserCommunityActivity) ClaudeMessages {
 	claudeMessages := ClaudeMessages{}
 
 	// 1. User's ticker mentions with replied messages
@@ -151,7 +151,7 @@ func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, foll
 	}
 
 	if len(allFriends) > 0 {
-		totalFriends, fudFriends, fudFriendsList := userStatusManager.GetFUDFriendsAnalysis(allFriends)
+		totalFriends, fudFriends, fudFriendsList := dbService.GetFUDFriendsAnalysis(allFriends)
 
 		friendsAnalysis := map[string]interface{}{
 			"total_friends":       totalFriends,

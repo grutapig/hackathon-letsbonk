@@ -119,10 +119,10 @@ func ProvideTelegramService(config *Config, formatter *NotificationFormatter, db
 	return NewTelegramService(config.TelegramAPIKey, config.ProxyDSN, config.TelegramAdminChatID, formatter, dbService, channels.FudCh)
 }
 
-// ProvideUserStatusManager creates user status manager
-func ProvideUserStatusManager() *UserStatusManager {
-	return NewUserStatusManager()
-}
+// ProvideUserStatusManager creates user status manager - DEPRECATED: functionality moved to DatabaseService
+// func ProvideUserStatusManager() *UserStatusManager {
+// 	return NewUserStatusManager()
+// }
 
 // ProvideTwitterBotService creates Twitter bot service
 func ProvideTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, claudeAPI *ClaudeApi, dbService *DatabaseService) *TwitterBotService {
@@ -171,9 +171,10 @@ func BuildContainer() (*dig.Container, error) {
 		return nil, fmt.Errorf("failed to provide Telegram service: %w", err)
 	}
 
-	if err := container.Provide(ProvideUserStatusManager); err != nil {
-		return nil, fmt.Errorf("failed to provide user status manager: %w", err)
-	}
+	// User status management is now handled by DatabaseService
+	// if err := container.Provide(ProvideUserStatusManager); err != nil {
+	// 	return nil, fmt.Errorf("failed to provide user status manager: %w", err)
+	// }
 
 	if err := container.Provide(ProvideTwitterBotService); err != nil {
 		return nil, fmt.Errorf("failed to provide Twitter bot service: %w", err)

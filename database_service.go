@@ -992,6 +992,177 @@ func (s *DatabaseService) GetUserTickerOpinionCount(userID, ticker string) (int6
 	return count, err
 }
 
+// User Status Management Methods (migrated from user_status_manager.go)
+
+// GetUserStatus returns the current status of a user
+func (s *DatabaseService) GetUserStatus(userID string) string {
+	var user UserModel
+	err := s.db.Select("status").Where("id = ?", userID).First(&user).Error
+	if err != nil {
+		return USER_STATUS_UNKNOWN
+	}
+	return user.Status
+}
+
+// SetUserAnalyzing marks a user as being analyzed
+func (s *DatabaseService) SetUserAnalyzing(userID, username string) error {
+	now := time.Now()
+	return s.db.Model(&UserModel{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"status":           USER_STATUS_ANALYZING,
+		"last_analyzed_at": &now,
+		"analysis_count":   gorm.Expr("analysis_count + 1"),
+		"updated_at":       now,
+	}).Error
+}
+
+// UpdateUserAfterAnalysis updates user status after AI analysis
+func (s *DatabaseService) UpdateUserAfterAnalysis(userID, username string, aiDecision SecondStepClaudeResponse, messageID string) error {
+	now := time.Now()
+
+	status := USER_STATUS_CLEAN
+	if aiDecision.IsFUDUser || aiDecision.IsFUDAttack {
+		status = USER_STATUS_FUD_CONFIRMED
+	}
+
+	updates := map[string]interface{}{
+		"username":         username,
+		"status":           status,
+		"last_analyzed_at": &now,
+		"last_message_id":  messageID,
+		"analysis_count":   gorm.Expr("analysis_count + 1"),
+		"updated_at":       now,
+	}
+
+	if status == USER_STATUS_FUD_CONFIRMED {
+		updates["is_fud"] = true
+		updates["fud_type"] = aiDecision.FUDType
+		updates["fud_probability"] = aiDecision.FUDProbability
+		updates["fud_message_count"] = gorm.Expr("fud_message_count + 1")
+	} else {
+		updates["is_fud"] = false
+		updates["fud_type"] = ""
+		updates["fud_probability"] = 0
+	}
+
+	return s.db.Model(&UserModel{}).Where("id = ?", userID).Updates(updates).Error
+}
+
+// MarkUserAsFUD marks a user as FUD (for manual flagging)
+func (s *DatabaseService) MarkUserAsFUD(userID, username, messageID string, fudType string, probability float64) error {
+	now := time.Now()
+	return s.db.Model(&UserModel{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"username":          username,
+		"status":            USER_STATUS_FUD_CONFIRMED,
+		"is_fud":            true,
+		"fud_type":          fudType,
+		"fud_probability":   probability,
+		"last_message_id":   messageID,
+		"last_analyzed_at":  &now,
+		"fud_message_count": gorm.Expr("fud_message_count + 1"),
+		"updated_at":        now,
+	}).Error
+}
+
+// IsFUDUserByStatus checks if user has FUD status
+func (s *DatabaseService) IsFUDUserByStatus(userID string) bool {
+	return s.GetUserStatus(userID) == USER_STATUS_FUD_CONFIRMED
+}
+
+// IsUserBeingAnalyzed checks if user is currently being analyzed
+func (s *DatabaseService) IsUserBeingAnalyzed(userID string) bool {
+	return s.GetUserStatus(userID) == USER_STATUS_ANALYZING
+}
+
+// GetFUDFriendsAnalysis analyzes FUD connections in a list of usernames
+func (s *DatabaseService) GetFUDFriendsAnalysis(usernames []string) (int, int, []string) {
+	if len(usernames) == 0 {
+		return 0, 0, []string{}
+	}
+
+	totalFriends := len(usernames)
+	fudFriends := 0
+	fudFriendsList := make([]string, 0)
+
+	// Convert usernames to lowercase for case-insensitive search
+	lowerUsernames := make([]string, len(usernames))
+	for i, username := range usernames {
+		lowerUsernames[i] = strings.ToLower(username)
+	}
+
+	var fudUsers []UserModel
+	err := s.db.Where("LOWER(username) IN ? AND status = ?", lowerUsernames, USER_STATUS_FUD_CONFIRMED).Find(&fudUsers).Error
+	if err != nil {
+		log.Printf("Error getting FUD friends analysis: %v", err)
+		return totalFriends, 0, []string{}
+	}
+
+	for _, user := range fudUsers {
+		fudFriends++
+		fudFriendsList = append(fudFriendsList, fmt.Sprintf("%s (%s, %.1f%%)",
+			user.Username, user.FUDType, user.FUDProbability*100))
+	}
+
+	return totalFriends, fudFriends, fudFriendsList
+}
+
+// GetUserStats returns statistics about users by status
+func (s *DatabaseService) GetUserStats() (map[string]int, error) {
+	stats := map[string]int{
+		"total_users":   0,
+		"fud_confirmed": 0,
+		"clean_users":   0,
+		"analyzing":     0,
+		"unknown":       0,
+	}
+
+	// Count total users
+	var totalCount int64
+	err := s.db.Model(&UserModel{}).Count(&totalCount).Error
+	if err != nil {
+		return stats, err
+	}
+	stats["total_users"] = int(totalCount)
+
+	// Count by status
+	var statusCounts []struct {
+		Status string
+		Count  int64
+	}
+
+	err = s.db.Model(&UserModel{}).
+		Select("status, COUNT(*) as count").
+		Group("status").
+		Find(&statusCounts).Error
+	if err != nil {
+		return stats, err
+	}
+
+	for _, statusCount := range statusCounts {
+		switch statusCount.Status {
+		case USER_STATUS_FUD_CONFIRMED:
+			stats["fud_confirmed"] = int(statusCount.Count)
+		case USER_STATUS_CLEAN:
+			stats["clean_users"] = int(statusCount.Count)
+		case USER_STATUS_ANALYZING:
+			stats["analyzing"] = int(statusCount.Count)
+		case USER_STATUS_UNKNOWN:
+			stats["unknown"] = int(statusCount.Count)
+		}
+	}
+
+	return stats, nil
+}
+
+// GetUserInfo returns detailed user information (equivalent to UserInfo struct)
+func (s *DatabaseService) GetUserInfo(userID string) (*UserModel, error) {
+	var user UserModel
+	err := s.db.Where("id = ?", userID).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 // Close closes the database connection
 func (s *DatabaseService) Close() error {
 	sqlDB, err := s.db.DB()

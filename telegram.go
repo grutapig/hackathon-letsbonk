@@ -38,7 +38,6 @@ type TelegramService struct {
 	// Services for manual analysis
 	twitterApi             interface{}                // Will be set later
 	claudeApi              interface{}                // Will be set later
-	userStatusManager      interface{}                // Will be set later
 	systemPromptSecondStep []byte                     // Will be set later
 	ticker                 string                     // Will be set later
 	analysisChannel        chan twitterapi.NewMessage // Channel for manual analysis requests
@@ -184,10 +183,9 @@ func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, f
 }
 
 // SetAnalysisServices sets the services needed for manual analysis
-func (t *TelegramService) SetAnalysisServices(twitterApi interface{}, claudeApi interface{}, userStatusManager interface{}, systemPromptSecondStep []byte, ticker string) {
+func (t *TelegramService) SetAnalysisServices(twitterApi interface{}, claudeApi interface{}, systemPromptSecondStep []byte, ticker string) {
 	t.twitterApi = twitterApi
 	t.claudeApi = claudeApi
-	t.userStatusManager = userStatusManager
 	t.systemPromptSecondStep = systemPromptSecondStep
 	t.ticker = ticker
 }

@@ -12,7 +12,7 @@ import (
 
 const FUD_TYPE = "known_fud_user_activity"
 
-func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan twitterapi.NewMessage, claudeApi *ClaudeApi, systemPromptFirstStep []byte, userStatusManager *UserStatusManager, dbService *DatabaseService, loggingService *LoggingService, notificationCh chan FUDAlertNotification) {
+func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan twitterapi.NewMessage, claudeApi *ClaudeApi, systemPromptFirstStep []byte, dbService *DatabaseService, loggingService *LoggingService, notificationCh chan FUDAlertNotification) {
 	defer close(fudChannel)
 
 	for newMessage := range newMessageCh {
@@ -36,7 +36,7 @@ func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan t
 		isDetailAnalyzed := dbService.IsUserDetailAnalyzed(newMessage.Author.ID)
 
 		// Check if user is already known FUD user
-		isKnownFUDUser := dbService.IsFUDUser(newMessage.Author.ID)
+		isKnownFUDUser := dbService.IsFUDUserByStatus(newMessage.Author.ID)
 
 		if isKnownFUDUser {
 			// Known FUD user - ask Claude for quick analysis before sending notification
@@ -144,7 +144,7 @@ func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan t
 		if !isDetailAnalyzed {
 			// New user - send to detailed analysis
 			log.Printf("New user %s - sending directly to detailed analysis", newMessage.Author.UserName)
-			userStatusManager.SetUserAnalyzing(newMessage.Author.ID, newMessage.Author.UserName)
+			dbService.SetUserAnalyzing(newMessage.Author.ID, newMessage.Author.UserName)
 			fudChannel <- newMessage
 			continue
 		}
@@ -197,7 +197,7 @@ func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan t
 		if aiDecision.IsFud {
 			// Send to detailed analysis
 			log.Printf("First step flagged user %s as FUD - sending to detailed analysis", newMessage.Author.UserName)
-			userStatusManager.SetUserAnalyzing(newMessage.Author.ID, newMessage.Author.UserName)
+			dbService.SetUserAnalyzing(newMessage.Author.ID, newMessage.Author.UserName)
 			fudChannel <- newMessage
 		} else {
 			log.Printf("First step - user %s message not FUD, ignoring", newMessage.Author.UserName)
