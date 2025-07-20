@@ -151,6 +151,7 @@ func storeTweetAndUser(dbService *DatabaseService, tweet twitterapi.Tweet) {
 		CreatedAt:     createdAt,
 		ReplyCount:    tweet.ReplyCount,
 		UserID:        tweet.Author.Id,
+		Username:      tweet.Author.UserName,
 		InReplyToID:   tweet.InReplyToId,
 		SourceType:    TWEET_SOURCE_COMMUNITY,
 		TickerMention: "",

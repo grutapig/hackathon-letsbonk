@@ -1076,10 +1076,10 @@ func (t *TelegramService) handleLast5MessagesCommand(chatID int64) {
 	}
 
 	var response strings.Builder
-	response.WriteString("📄 <b>Last 5 Messages:</b>\n\n")
+	response.WriteString("📄 Last 5 Messages:\n\n")
 
 	for i, tweet := range tweets {
-		response.WriteString(fmt.Sprintf("<%d> <b>@%s</b> - %s\n",
+		response.WriteString(fmt.Sprintf("<b>%d</b> %s - %s\n",
 			i+1,
 			tweet.Username,
 			tweet.CreatedAt.Format("2006-01-02 15:04:05")))
