@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/grutapig/hackaton/twitterapi"
 	"log"
@@ -25,7 +26,7 @@ type TwitterBotService struct {
 	monitoringMutex sync.Mutex
 }
 
-func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, databaseService *DatabaseService) *TwitterBotService {
+func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, databaseService *DatabaseService, claudeApi *ClaudeApi) *TwitterBotService {
 	botTag := os.Getenv(ENV_TWITTER_BOT_TAG)
 	if botTag == "" {
 		panic("ENV_TWITTER_BOT_TAG environment variable is not set")
@@ -45,6 +46,7 @@ func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, databaseServ
 		databaseService: databaseService,
 		botTag:          botTag,
 		authSession:     authSession,
+		claudeAPI:       claudeApi,
 		proxyDsn:        proxyDSN,
 		knownTweets:     make(map[string]bool),
 	}
@@ -151,18 +153,34 @@ func (t *TwitterBotService) findNewTweets(tweets []twitterapi.Tweet) []twitterap
 }
 
 func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
-	responseText := fmt.Sprintf("Hello @%s! Thank you for mentioning me.", tweet.Author.UserName)
-
 	mentionedUsers := t.parseUserMentions(tweet.Text, tweet.Author.UserName)
+
+	var cacheData string
+	var repliedMessage string
+	var isMessageEvaluation bool
 	if len(mentionedUsers) > 0 {
-		log.Printf("found users in message: %s", strings.Join(mentionedUsers, ","))
-		cacheInfo := t.getCacheAnalysisInfo(mentionedUsers)
-		if cacheInfo != "" {
-			responseText += "\n\n" + cacheInfo
+		cacheData = t.prepareCacheDataForClaude(mentionedUsers)
+		isMessageEvaluation = false
+	} else if tweet.InReplyToId != "" {
+		repliedToTweet, repliedToAuthor, err := t.getRepliedToTweetAndAuthor(tweet.InReplyToId)
+		if err != nil {
+			log.Printf("Error getting replied-to tweet: %v", err)
+		} else {
+			cacheData = t.prepareCacheDataForClaude([]string{repliedToAuthor})
+			repliedMessage = repliedToTweet
+			isMessageEvaluation = true
 		}
 	}
 
-	log.Println(responseText)
+	responseText, err := t.generateClaudeResponse(tweet.Text, repliedMessage, cacheData, isMessageEvaluation)
+	if err != nil {
+		log.Printf("Error generating Claude response: %v", err)
+		responseText = fmt.Sprintf("Hello @%s! Thank you for mentioning me.", tweet.Author.UserName)
+	}
+
+	responseText = t.limitResponseLength(responseText, 180)
+
+	log.Println("Final response:", responseText)
 	postRequest := twitterapi.PostTweetRequest{
 		AuthSession:      t.authSession,
 		TweetText:        responseText,
@@ -219,4 +237,106 @@ func (t *TwitterBotService) getCacheAnalysisInfo(usernames []string) string {
 		return "Cache Analysis:\n" + strings.Join(results, "\n")
 	}
 	return ""
+}
+
+func (t *TwitterBotService) prepareCacheDataForClaude(usernames []string) string {
+	if t.databaseService == nil || len(usernames) == 0 {
+		return ""
+	}
+
+	var cacheDataList []map[string]interface{}
+	for _, username := range usernames {
+		cached, err := t.databaseService.GetCachedAnalysisByUsername(username)
+		if err != nil {
+			continue
+		}
+
+		if cached != nil {
+			data := map[string]interface{}{
+				"username":        cached.Username,
+				"is_fud_user":     cached.IsFUDUser,
+				"fud_type":        cached.FUDType,
+				"fud_probability": cached.FUDProbability,
+				"user_risk_level": cached.UserRiskLevel,
+				"user_summary":    cached.UserSummary,
+				"decision_reason": cached.DecisionReason,
+			}
+			cacheDataList = append(cacheDataList, data)
+		}
+	}
+
+	if len(cacheDataList) == 0 {
+		return ""
+	}
+
+	jsonData, err := json.MarshalIndent(cacheDataList, "", "  ")
+	if err != nil {
+		log.Printf("Error marshaling cache data: %v", err)
+		return ""
+	}
+
+	return string(jsonData)
+}
+
+func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessage string, cacheData string, isMessageEvaluation bool) (string, error) {
+	if t.claudeAPI == nil {
+		return "", fmt.Errorf("Claude API not initialized")
+	}
+
+	var systemPrompt string
+	var userPrompt string
+
+	if isMessageEvaluation {
+		systemPrompt = "Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 characters)."
+		userPrompt = fmt.Sprintf("Tagger's message: %s\n\nMessage to evaluate: %s\n\nUser data:\n%s", originalMessage, repliedMessage, cacheData)
+	} else {
+		systemPrompt = "Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet (180 characters)."
+		userPrompt = fmt.Sprintf("Original message: %s\n\nCache information:\n%s", originalMessage, cacheData)
+	}
+
+	request := ClaudeMessages{
+		{
+			Role:    ROLE_USER,
+			Content: userPrompt,
+		},
+	}
+	log.Printf("request to claude: %s\n", userPrompt)
+	t.claudeAPI.maxTokens = 240 / 4
+	response, err := t.claudeAPI.SendMessage(request, systemPrompt)
+	if err != nil {
+		return "", err
+	}
+
+	if len(response.Content) > 0 {
+		log.Printf("response for claude: %s", response.Content[0].Text)
+		return response.Content[0].Text, nil
+	}
+
+	return "", fmt.Errorf("empty response from Claude")
+}
+
+func (t *TwitterBotService) limitResponseLength(text string, maxLength int) string {
+	if len(text) <= maxLength {
+		return text
+	}
+
+	if maxLength <= 3 {
+		return text[:maxLength]
+	}
+
+	return text[:maxLength-3] + "..."
+}
+
+func (t *TwitterBotService) getRepliedToTweetAndAuthor(tweetID string) (text string, username string, err error) {
+	tweetsByIdsResponse, err := t.twitterAPI.GetTweetsByIds([]string{tweetID})
+	if err != nil {
+		return "", "", fmt.Errorf("error fetching tweet by ID: %w", err)
+	}
+
+	if len(tweetsByIdsResponse.Tweets) == 0 {
+		return "", "", fmt.Errorf("tweet not found")
+	}
+
+	tweet := tweetsByIdsResponse.Tweets[0]
+	return tweet.Text, tweet.Author.UserName, nil
 }

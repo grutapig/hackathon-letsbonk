@@ -14,6 +14,7 @@ func TestNewTwitterBotService(t *testing.T) {
 	twitterAPIService := twitterapi.NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
 	databaseService, err := NewDatabaseService(os.Getenv(ENV_DATABASE_NAME))
 	assert.NoError(t, err)
-	twitterBotService := NewTwitterBotService(twitterAPIService, databaseService)
+	claude, err := NewClaudeClient(os.Getenv(ENV_CLAUDE_API_KEY), os.Getenv(ENV_PROXY_CLAUDE_DSN), CLAUDE_MODEL)
+	twitterBotService := NewTwitterBotService(twitterAPIService, databaseService, claude)
 	twitterBotService.StartMonitoring(context.Background())
 }
