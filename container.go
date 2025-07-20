@@ -109,8 +109,8 @@ func ProvideTelegramService(config *Config, formatter *NotificationFormatter, db
 	return NewTelegramService(config.TelegramAPIKey, config.ProxyDSN, config.TelegramAdminChatID, formatter, dbService, channels.FudCh)
 }
 
-func ProvideTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, claudeAPI *ClaudeApi, dbService *DatabaseService) *TwitterBotService {
-	return NewTwitterBotService(twitterAPI, claudeAPI, dbService)
+func ProvideTwitterBotService(twitterAPI *twitterapi.TwitterAPIService) *TwitterBotService {
+	return NewTwitterBotService(twitterAPI)
 }
 
 func ProvideCleanupScheduler(loggingService *LoggingService) *CleanupScheduler {

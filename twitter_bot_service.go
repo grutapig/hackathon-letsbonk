@@ -1,12 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"github.com/grutapig/hackaton/twitterapi"
 	"log"
 	"os"
-	"strings"
-
-	"github.com/grutapig/hackaton/twitterapi"
+	"sync"
+	"time"
 )
 
 type TwitterBotService struct {
@@ -15,9 +16,14 @@ type TwitterBotService struct {
 	databaseService *DatabaseService
 	botTag          string
 	authSession     string
+	proxyDsn        string
+	knownTweets     map[string]bool
+	tweetsMutex     sync.RWMutex
+	isMonitoring    bool
+	monitoringMutex sync.Mutex
 }
 
-func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, claudeAPI *ClaudeApi, databaseService *DatabaseService) *TwitterBotService {
+func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService) *TwitterBotService {
 	botTag := os.Getenv(ENV_TWITTER_BOT_TAG)
 	if botTag == "" {
 		panic("ENV_TWITTER_BOT_TAG environment variable is not set")
@@ -27,130 +33,135 @@ func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, claudeAPI *C
 	if authSession == "" {
 		panic("ENV_TWITTER_AUTH environment variable is not set")
 	}
+	proxyDSN := os.Getenv(ENV_PROXY_DSN)
+	if authSession == "" {
+		panic("ENV_PROXY_DSN environment variable is not set")
+	}
 
 	return &TwitterBotService{
-		twitterAPI:      twitterAPI,
-		claudeAPI:       claudeAPI,
-		databaseService: databaseService,
-		botTag:          botTag,
-		authSession:     authSession,
+		twitterAPI:  twitterAPI,
+		botTag:      botTag,
+		authSession: authSession,
+		proxyDsn:    proxyDSN,
+		knownTweets: make(map[string]bool),
 	}
 }
 
-func (s *TwitterBotService) ProcessMentionTweet(message twitterapi.NewMessage) {
-	log.Printf("Processing mention tweet from @%s: %s", message.Author.UserName, message.Text)
+func (t *TwitterBotService) StartMonitoring(ctx context.Context) error {
+	t.monitoringMutex.Lock()
+	if t.isMonitoring {
+		t.monitoringMutex.Unlock()
+		return fmt.Errorf("monitoring is already running")
+	}
+	t.isMonitoring = true
+	t.monitoringMutex.Unlock()
 
-	analysisPrompt := fmt.Sprintf("Analyze this tweet for questions or requests: %s", message.Text)
+	log.Printf("Starting monitoring for mentions to %s", t.botTag)
 
-	claudeMessages := ClaudeMessages{
-		{
-			Role:    "user",
-			Content: analysisPrompt,
-		},
+	if err := t.initializeKnownTweets(); err != nil {
+		log.Printf("Error initializing known tweets: %v", err)
+		return err
 	}
 
-	analysisResponse, err := s.claudeAPI.SendMessage(claudeMessages, "")
-	if err != nil {
-		log.Printf("Failed to analyze tweet: %v", err)
-		return
-	}
+	ticker := time.NewTicker(20 * time.Second)
+	defer ticker.Stop()
 
-	log.Printf("Analysis response: %s", analysisResponse.Content[0].Text)
-
-	var fudUser *FUDUserModel
-	fudUser, err = s.databaseService.GetFUDUser(message.Author.ID)
-	if err != nil {
-		log.Printf("User not found in FUD database: %v", err)
-	}
-
-	contextInfo := ""
-	if fudUser != nil {
-		contextInfo = fmt.Sprintf("User @%s is marked as FUD user with type: %s", message.Author.UserName, fudUser.FUDType)
-	} else {
-		contextInfo = fmt.Sprintf("User @%s is not in FUD database", message.Author.UserName)
-	}
-
-	responsePrompt := fmt.Sprintf(`Generate a response to this tweet. Context: %s
-	
-Tweet analysis: %s
-Original tweet: %s
-
-Respond in 180 characters or less. Do not use JSON format, just plain text.`, contextInfo, analysisResponse.Content[0].Text, message.Text)
-
-	responseMessages := ClaudeMessages{
-		{
-			Role:    "user",
-			Content: responsePrompt,
-		},
-	}
-
-	responseResult, err := s.claudeAPI.SendMessage(responseMessages, "")
-	if err != nil {
-		log.Printf("Failed to generate response: %v", err)
-		return
-	}
-
-	responseText := responseResult.Content[0].Text
-
-	if len(responseText) > 180 {
-		responseText = responseText[:180]
-	}
-
-	log.Printf("Generated response: %s", responseText)
-
-	err = s.PostReplyTweet(responseText, message.TweetID)
-	if err != nil {
-		log.Printf("Failed to post reply tweet: %v", err)
-	} else {
-		log.Printf("Successfully posted reply to tweet %s", message.TweetID)
-	}
-}
-
-func (s *TwitterBotService) PostReplyTweet(text, replyToID string) error {
-	request := twitterapi.PostTweetRequest{
-		AuthSession:      s.authSession,
-		TweetText:        text,
-		InReplyToTweetId: replyToID,
-		Proxy:            os.Getenv(ENV_PROXY_DSN),
-	}
-
-	response, err := s.twitterAPI.PostTweet(request)
-	if err != nil {
-		return fmt.Errorf("failed to post tweet: %w", err)
-	}
-
-	log.Printf("Posted tweet with ID: %s", response.Data.CreateTweet.TweetResult.Result.RestId)
-	return nil
-}
-
-func (s *TwitterBotService) ContainsBotTag(text string) bool {
-	return strings.Contains(strings.ToLower(text), strings.ToLower(s.botTag))
-}
-
-func (s *TwitterBotService) StartMentionListener(newMessageCh chan twitterapi.NewMessage) {
-	log.Printf("Starting mention listener for bot tag: %s", s.botTag)
-
-	processedTweets := make(map[string]bool)
-
-	for message := range newMessageCh {
-
-		if processedTweets[message.TweetID] {
-			continue
-		}
-
-		if s.ContainsBotTag(message.Text) {
-			log.Printf("Found mention in tweet %s from @%s", message.TweetID, message.Author.UserName)
-			go s.ProcessMentionTweet(message)
-			processedTweets[message.TweetID] = true
-		}
-
-		if len(processedTweets) > 1000 {
-			for tweetID := range processedTweets {
-				delete(processedTweets, tweetID)
-				if len(processedTweets) <= 500 {
-					break
-				}
+	for {
+		select {
+		case <-ctx.Done():
+			t.monitoringMutex.Lock()
+			t.isMonitoring = false
+			t.monitoringMutex.Unlock()
+			log.Println("Monitoring stopped")
+			return ctx.Err()
+		case <-ticker.C:
+			log.Println("checking...")
+			if err := t.checkForNewTweets(); err != nil {
+				log.Printf("Error checking for new tweets: %v", err)
 			}
 		}
 	}
+}
+
+func (t *TwitterBotService) initializeKnownTweets() error {
+	query := fmt.Sprintf("%s", t.botTag)
+	searchRequest := twitterapi.AdvancedSearchRequest{
+		Query:     query,
+		QueryType: twitterapi.LATEST,
+	}
+
+	response, err := t.twitterAPI.AdvancedSearch(searchRequest)
+	if err != nil {
+		return fmt.Errorf("error in initial search: %w", err)
+	}
+
+	t.tweetsMutex.Lock()
+	defer t.tweetsMutex.Unlock()
+
+	for _, tweet := range response.Tweets {
+		t.knownTweets[tweet.Id] = true
+		log.Println(tweet.CreatedAt, tweet.Id, tweet.Text, tweet.Author.UserName)
+	}
+
+	log.Printf("Initialized with %d known tweets", len(t.knownTweets))
+	return nil
+}
+
+func (t *TwitterBotService) checkForNewTweets() error {
+	query := fmt.Sprintf("%s", t.botTag)
+	searchRequest := twitterapi.AdvancedSearchRequest{
+		Query:     query,
+		QueryType: twitterapi.LATEST,
+	}
+
+	response, err := t.twitterAPI.AdvancedSearch(searchRequest)
+	if err != nil {
+		return fmt.Errorf("error in search: %w", err)
+	}
+	log.Printf("%s: found tweets: %d\n", query, len(response.Tweets))
+
+	newTweets := t.findNewTweets(response.Tweets)
+
+	for _, tweet := range newTweets {
+		log.Printf("Found new tweet from @%s: %s", tweet.Author.UserName, tweet.Text)
+		if err := t.respondToTweet(tweet); err != nil {
+			log.Printf("Error responding to tweet %s: %v", tweet.Id, err)
+		}
+	}
+
+	return nil
+}
+
+func (t *TwitterBotService) findNewTweets(tweets []twitterapi.Tweet) []twitterapi.Tweet {
+	t.tweetsMutex.Lock()
+	defer t.tweetsMutex.Unlock()
+
+	var newTweets []twitterapi.Tweet
+	for _, tweet := range tweets {
+		if !t.knownTweets[tweet.Id] {
+			t.knownTweets[tweet.Id] = true
+			newTweets = append(newTweets, tweet)
+		}
+	}
+
+	return newTweets
+}
+
+func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
+	responseText := fmt.Sprintf("Hello @%s! Thank you for mentioning me.", tweet.Author.UserName)
+
+	postRequest := twitterapi.PostTweetRequest{
+		AuthSession:      t.authSession,
+		TweetText:        responseText,
+		InReplyToTweetId: tweet.Id,
+		Proxy:            t.proxyDsn,
+	}
+
+	response, err := t.twitterAPI.PostTweet(postRequest)
+	if err != nil {
+		return fmt.Errorf("error posting tweet: %w", err)
+	}
+
+	log.Printf("Successfully responded to tweet %s with tweet %s", tweet.Id, response.Data.CreateTweet.TweetResult.Result.RestId)
+	return nil
 }

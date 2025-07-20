@@ -135,12 +135,6 @@ func (app *Application) Run() error {
 		NotificationHandler(app.channels.NotificationCh, app.telegramService)
 	}()
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		app.twitterBotService.StartMentionListener(app.channels.TwitterBotCh)
-	}()
-
 	wg.Wait()
 	return nil
 }

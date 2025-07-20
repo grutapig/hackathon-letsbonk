@@ -94,7 +94,7 @@ func TestTwitterAPIService_AdvancedSearch(t *testing.T) {
 
 	api := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
 	advancedSearchResponse, err := api.AdvancedSearch(AdvancedSearchRequest{
-		Query:     fmt.Sprintf("$DARK from:swzvs567"),
+		Query:     fmt.Sprintf("@EricVv8740"),
 		QueryType: LATEST,
 		Cursor:    "",
 	})
@@ -107,18 +107,10 @@ func TestTwitterAPIService_PostTweet(t *testing.T) {
 	api := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
 	postTweetResponse, err := api.PostTweet(PostTweetRequest{
 		AuthSession: os.Getenv(ENV_TWITTER_AUTH),
-		TweetText: `👤 User Details:
-• Username: @NyraanAlpha
-• Name: NyraanAlpha
-• https://x.com/NyraanAlpha
-• User ID: 1893424386146811904
-
-🔍 Analysis Results:
-• ✅ Status: Clean User
-• 🎯 FUD Type: none
+		TweetText: `this is test message
 `,
 		QuoteTweetId:     "",
-		InReplyToTweetId: "1945799352942821483",
+		InReplyToTweetId: "",
 		MediaId:          "",
 		Proxy:            os.Getenv(ENV_PROXY_DSN),
 	})
