@@ -2,7 +2,9 @@ package twitterapi_reverse
 
 import (
 	"fmt"
+	"github.com/grutapig/hackaton/twitterapi"
 	"github.com/joho/godotenv"
+	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"
 )
@@ -23,7 +25,7 @@ func TestTwitterReverseService_GetTweetDetail(t *testing.T) {
 	fmt.Printf("Parsed auth - CSRF Token: %s\n", auth.XCSRFToken[:50]+"...")
 	fmt.Printf("Parsed auth - Cookie: %s\n", auth.Cookie[:50]+"...")
 
-	service := NewTwitterReverseService(auth, os.Getenv("proxy_dsn"), true)
+	service := NewTwitterReverseApi(auth, os.Getenv("proxy_dsn"), true)
 
 	tweetID := "1940098840440578176"
 	tweet, err := service.GetTweetDetail(tweetID)
@@ -37,8 +39,8 @@ func TestTwitterReverseService_GetTweetDetail(t *testing.T) {
 	fmt.Printf("Text: %s\n", tweet.Text)
 	fmt.Printf("Created At: %s\n", tweet.CreatedAt.Format("2006-01-02 15:04:05"))
 	fmt.Printf("Replies Count: %d\n", tweet.RepliesCount)
-	if tweet.ReplyToID != nil {
-		fmt.Printf("Reply To ID: %s\n", *tweet.ReplyToID)
+	if tweet.ReplyToID != "" {
+		fmt.Printf("Reply To ID: %s\n", tweet.ReplyToID)
 	} else {
 		fmt.Printf("Reply To ID: none\n")
 	}
@@ -64,7 +66,7 @@ func TestTwitterReverseService_GetCommunityTweets(t *testing.T) {
 	fmt.Printf("Parsed from headers - CSRF Token: %s\n", auth.XCSRFToken[:50]+"...")
 	fmt.Printf("Parsed from headers - Cookie: %s\n", auth.Cookie[:50]+"...")
 
-	service := NewTwitterReverseService(auth, os.Getenv("proxy_dsn"), true)
+	service := NewTwitterReverseApi(auth, os.Getenv("proxy_dsn"), true)
 
 	communityID := "1914102634241577036"
 	tweets, err := service.GetCommunityTweets(communityID, 10)
@@ -78,9 +80,19 @@ func TestTwitterReverseService_GetCommunityTweets(t *testing.T) {
 		fmt.Printf("[%d] @%s (%s) - ID: %s\n", i+1, tweet.Author.Username, tweet.Author.Name, tweet.TweetID)
 		fmt.Printf("    Text: %s\n", tweet.Text)
 		fmt.Printf("    Created: %s, Replies: %d\n", tweet.CreatedAt.Format("2006-01-02 15:04:05"), tweet.RepliesCount)
-		if tweet.ReplyToID != nil {
-			fmt.Printf("    Reply to: %s\n", *tweet.ReplyToID)
+		if tweet.ReplyToID != "" {
+			fmt.Printf("    Reply to: %s\n", tweet.ReplyToID)
 		}
 		fmt.Printf("    ---\n")
+	}
+}
+func TestTwitterReverseService_GetNotifications(t *testing.T) {
+	godotenv.Load("../.env")
+	auth := NewTwitterAuth(os.Getenv(ENV_TWITTER_REVERSE_AUTHORIZATION), os.Getenv(ENV_TWITTER_REVERSE_CSRF_TOKEN), os.Getenv(ENV_TWITTER_REVERSE_COOKIE))
+	service := NewTwitterReverseApi(auth, os.Getenv(twitterapi.ENV_PROXY_DSN), false)
+	tweets, err := service.GetNotificationsSimple()
+	assert.NoError(t, err)
+	for i, tweet := range tweets {
+		fmt.Println(i, "|", tweet.Text, "|", tweet.CreatedAt, "|", tweet.Author.Username, "| reply:", tweet.ReplyToID)
 	}
 }

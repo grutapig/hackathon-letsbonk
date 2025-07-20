@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/grutapig/hackaton/twitterapi"
+	"github.com/grutapig/hackaton/twitterapi_reverse"
 	"log"
 	"os"
 	"regexp"
@@ -15,6 +16,7 @@ import (
 
 type TwitterBotService struct {
 	twitterAPI      *twitterapi.TwitterAPIService
+	twitterReverse  *twitterapi_reverse.TwitterReverseService
 	claudeAPI       *ClaudeApi
 	databaseService *DatabaseService
 	botTag          string
@@ -26,7 +28,7 @@ type TwitterBotService struct {
 	monitoringMutex sync.Mutex
 }
 
-func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, databaseService *DatabaseService, claudeApi *ClaudeApi) *TwitterBotService {
+func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, twitterReverse *twitterapi_reverse.TwitterReverseService, databaseService *DatabaseService, claudeApi *ClaudeApi) *TwitterBotService {
 	botTag := os.Getenv(ENV_TWITTER_BOT_TAG)
 	if botTag == "" {
 		panic("ENV_TWITTER_BOT_TAG environment variable is not set")
@@ -43,6 +45,7 @@ func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, databaseServ
 
 	return &TwitterBotService{
 		twitterAPI:      twitterAPI,
+		twitterReverse:  twitterReverse,
 		databaseService: databaseService,
 		botTag:          botTag,
 		authSession:     authSession,
@@ -68,7 +71,7 @@ func (t *TwitterBotService) StartMonitoring(ctx context.Context) error {
 		return err
 	}
 
-	ticker := time.NewTicker(60 * time.Second)
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -89,13 +92,7 @@ func (t *TwitterBotService) StartMonitoring(ctx context.Context) error {
 }
 
 func (t *TwitterBotService) initializeKnownTweets() error {
-	query := fmt.Sprintf("%s", t.botTag)
-	searchRequest := twitterapi.AdvancedSearchRequest{
-		Query:     query,
-		QueryType: twitterapi.LATEST,
-	}
-
-	response, err := t.twitterAPI.AdvancedSearch(searchRequest)
+	tweets, err := t.getNewMentions()
 	if err != nil {
 		return fmt.Errorf("error in initial search: %w", err)
 	}
@@ -103,7 +100,7 @@ func (t *TwitterBotService) initializeKnownTweets() error {
 	t.tweetsMutex.Lock()
 	defer t.tweetsMutex.Unlock()
 
-	for _, tweet := range response.Tweets {
+	for _, tweet := range tweets {
 		t.knownTweets[tweet.Id] = true
 		log.Println(tweet.CreatedAt, tweet.Id, tweet.Text, tweet.Author.UserName)
 	}
@@ -113,19 +110,13 @@ func (t *TwitterBotService) initializeKnownTweets() error {
 }
 
 func (t *TwitterBotService) checkForNewTweets() error {
-	query := fmt.Sprintf("%s", t.botTag)
-	searchRequest := twitterapi.AdvancedSearchRequest{
-		Query:     query,
-		QueryType: twitterapi.LATEST,
-	}
-
-	response, err := t.twitterAPI.AdvancedSearch(searchRequest)
+	tweets, err := t.getNewMentions()
 	if err != nil {
-		return fmt.Errorf("error in search: %w", err)
+		return fmt.Errorf("error getting mentions: %w", err)
 	}
-	log.Printf("%s: found tweets: %d\n", query, len(response.Tweets))
+	log.Printf("found tweets: %d\n", len(tweets))
 
-	newTweets := t.findNewTweets(response.Tweets)
+	newTweets := t.findNewTweets(tweets)
 
 	for _, tweet := range newTweets {
 		log.Printf("Found new tweet from @%s: %s", tweet.Author.UserName, tweet.Text)
@@ -135,6 +126,42 @@ func (t *TwitterBotService) checkForNewTweets() error {
 	}
 
 	return nil
+}
+
+func (t *TwitterBotService) getNewMentions() ([]twitterapi.Tweet, error) {
+	if t.twitterReverse != nil {
+		simpleTweets, err := t.twitterReverse.GetNotificationsSimple()
+		if err == nil {
+			var tweets []twitterapi.Tweet
+			for _, st := range simpleTweets {
+				tweet := twitterapi.Tweet{
+					Id:   st.TweetID,
+					Text: st.Text,
+					Author: twitterapi.Author{
+						UserName: st.Author.Username,
+					},
+					CreatedAtParsed: st.CreatedAt,
+					InReplyToId:     st.ReplyToID,
+				}
+				tweets = append(tweets, tweet)
+			}
+			return tweets, nil
+		}
+		log.Printf("Reverse service failed, falling back to advanced search: %v", err)
+	}
+
+	query := fmt.Sprintf("%s", t.botTag)
+	searchRequest := twitterapi.AdvancedSearchRequest{
+		Query:     query,
+		QueryType: twitterapi.LATEST,
+	}
+
+	response, err := t.twitterAPI.AdvancedSearch(searchRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	return response.Tweets, nil
 }
 
 func (t *TwitterBotService) findNewTweets(tweets []twitterapi.Tweet) []twitterapi.Tweet {
@@ -154,6 +181,10 @@ func (t *TwitterBotService) findNewTweets(tweets []twitterapi.Tweet) []twitterap
 
 func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 	mentionedUsers := t.parseUserMentions(tweet.Text, tweet.Author.UserName)
+	if !strings.Contains(tweet.Text, "?") {
+		log.Printf("not contains '?', nothing asked: %s (%s)\n", tweet.Text, tweet.Author.UserName)
+		return nil
+	}
 
 	var cacheData string
 	var repliedMessage string
@@ -181,7 +212,7 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 		responseText = fmt.Sprintf("Hello @%s! Thank you for mentioning me.", tweet.Author.UserName)
 	}
 
-	responseText = t.limitResponseLength(responseText, 180)
+	responseText = t.limitResponseLength(responseText, 380)
 
 	log.Println("Final response:", responseText)
 	postRequest := twitterapi.PostTweetRequest{

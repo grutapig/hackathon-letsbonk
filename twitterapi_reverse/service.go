@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -18,7 +20,7 @@ type TwitterReverseService struct {
 	debug     bool
 }
 
-func NewTwitterReverseService(auth *TwitterAuth, proxyURL string, debug bool) *TwitterReverseService {
+func NewTwitterReverseApi(auth *TwitterAuth, proxyURL string, debug bool) *TwitterReverseService {
 	service := &TwitterReverseService{
 		auth:      auth,
 		proxyURL:  proxyURL,
@@ -278,7 +280,6 @@ func (s *TwitterReverseService) GetCommunityTweets(communityID string, count int
 				TweetID:      tweet.Content.ItemContent.TweetResults.Result.RestId,
 				Text:         tweet.Content.ItemContent.TweetResults.Result.Legacy.FullText,
 				CreatedAt:    date,
-				ReplyToID:    nil,
 				RepliesCount: tweet.Content.ItemContent.TweetResults.Result.Legacy.ReplyCount,
 				Author: SimpleUser{
 					ID:       tweet.Content.ItemContent.TweetResults.Result.Legacy.UserIdStr,
@@ -297,7 +298,6 @@ func (s *TwitterReverseService) GetCommunityTweets(communityID string, count int
 				TweetID:      tweet.Content.ItemContent.TweetResults.Result.RestId,
 				Text:         tweet.Content.ItemContent.TweetResults.Result.Legacy.FullText,
 				CreatedAt:    date,
-				ReplyToID:    nil,
 				RepliesCount: tweet.Content.ItemContent.TweetResults.Result.Legacy.ReplyCount,
 				Author: SimpleUser{
 					ID:       tweet.Content.ItemContent.TweetResults.Result.Legacy.UserIdStr,
@@ -315,16 +315,11 @@ func (s *TwitterReverseService) GetCommunityTweets(communityID string, count int
 }
 
 func convertTweetToSimple(tweet Tweet) *SimpleTweet {
-	var replyToID *string
-	if tweet.InReplyToStatusID != "" {
-		replyToID = &tweet.InReplyToStatusID
-	}
-
 	return &SimpleTweet{
 		TweetID:      tweet.ID,
 		Text:         tweet.FullText,
 		CreatedAt:    tweet.CreatedAt,
-		ReplyToID:    replyToID,
+		ReplyToID:    tweet.InReplyToStatusID,
 		RepliesCount: int(tweet.ReplyCount),
 		Author: SimpleUser{
 			ID:       tweet.Author.ID,
@@ -332,4 +327,48 @@ func convertTweetToSimple(tweet Tweet) *SimpleTweet {
 			Name:     tweet.Author.Name,
 		},
 	}
+}
+
+func (s *TwitterReverseService) GetNotifications() (*NotificationsResponse, error) {
+	ver := strconv.Itoa(int(time.Now().Unix()))
+	body, err := s.makeRequest(http.MethodGet, "/i/api/graphql/Wa5HH91bSTqp3ZvBfTEtzQ/NotificationsTimeline?variables=%7B%22timeline_type%22%3A%22All%22%2C%22count%22%3A25%7D&features=%7B%22rweb_video_screen_enabled%22%3Afalse%2C%22payments_enabled%22%3Afalse%2C%22profile_label_improvements_pcf_label_in_post_enabled%22%3Atrue%2C%22rweb_tipjar_consumption_enabled%22%3Atrue%2C%22verified_phone_label_enabled%22%3Afalse%2C%22creator_subscriptions_tweet_preview_api_enabled%22%3Atrue%2C%22responsive_web_graphql_timeline_navigation_enabled%22%3Atrue%2C%22responsive_web_graphql_skip_user_profile_image_extensions_enabled%22%3Afalse%2C%22premium_content_api_read_enabled%22%3Afalse%2C%22communities_web_enable_tweet_community_results_fetch%22%3Atrue%2C%22c9s_tweet_anatomy_moderator_badge_enabled%22%3Atrue%2C%22responsive_web_grok_analyze_button_fetch_trends_enabled%22%3Afalse%2C%22responsive_web_grok_analyze_post_followups_enabled%22%3Atrue%2C%22responsive_web_jetfuel_frame%22%3Atrue%2C%22responsive_web_grok_share_attachment_enabled%22%3Atrue%2C%22articles_preview_enabled%22%3Atrue%2C%22responsive_web_edit_tweet_api_enabled%22%3Atrue%2C%22graphql_is_translatable_rweb_tweet_is_translatable_enabled%22%3Atrue%2C%22view_counts_everywhere_api_enabled%22%3Atrue%2C%22longform_notetweets_consumption_enabled%22%3Atrue%2C%22responsive_web_twitter_article_tweet_consumption_enabled%22%3Atrue%2C%22tweet_awards_web_tipping_enabled%22%3Afalse%2C%22responsive_web_grok_show_grok_translated_post%22%3Afalse%2C%22responsive_web_grok_analysis_button_from_backend%22%3Atrue%2C%22creator_subscriptions_quote_tweet_preview_enabled%22%3Afalse%2C%22freedom_of_speech_not_reach_fetch_enabled%22%3Atrue%2C%22standardized_nudges_misinfo%22%3Atrue%2C%22tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled%22%3Atrue%2C%22longform_notetweets_rich_text_read_enabled%22%3Atrue%2C%22longform_notetweets_inline_media_enabled%22%3Atrue%2C%22responsive_web_grok_image_annotation_enabled%22%3Atrue%2C%22responsive_web_grok_community_note_auto_translation_is_enabled%22%3Afalse%2C%22responsive_web_enhance_cards_enabled%22%3Afalse%7D&ver="+ver, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error on make request GetNotifications: %s", err)
+	}
+	notificationsResponse := &NotificationsResponse{}
+	err = json.Unmarshal(body, notificationsResponse)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshal GetNotifications: %s", err)
+	}
+	return notificationsResponse, err
+}
+func (s *TwitterReverseService) GetNotificationsSimple() ([]SimpleTweet, error) {
+	tweets := []SimpleTweet{}
+	notificationsResponse, err := s.GetNotifications()
+	if err != nil {
+		return nil, fmt.Errorf("GetNotificationsSimple error: %s", err)
+	}
+	for _, instruction := range notificationsResponse.Data.ViewerV2.UserResults.Result.NotificationTimeline.Timeline.Instructions {
+		for _, entry := range instruction.Entries {
+			if entry.Content.ItemContent.TweetResults.Result.Legacy.FullText != "" {
+				timeConverted, err := ParseTwitterTime(entry.Content.ItemContent.TweetResults.Result.Legacy.CreatedAt)
+				if err != nil {
+					log.Println("error on parse date of tweet: ", err)
+				}
+				tweets = append(tweets, SimpleTweet{
+					TweetID:      entry.Content.ItemContent.TweetResults.Result.Legacy.IdStr,
+					Text:         entry.Content.ItemContent.TweetResults.Result.Legacy.FullText,
+					CreatedAt:    timeConverted,
+					ReplyToID:    entry.Content.ItemContent.TweetResults.Result.Legacy.InReplyToStatusIdStr,
+					RepliesCount: entry.Content.ItemContent.TweetResults.Result.Legacy.ReplyCount,
+					Author: SimpleUser{
+						ID:       entry.Content.ItemContent.TweetResults.Result.Legacy.UserIdStr,
+						Username: entry.Content.ItemContent.TweetResults.Result.Core.UserResults.Result.Core.ScreenName,
+						Name:     entry.Content.ItemContent.TweetResults.Result.Core.UserResults.Result.Core.Name,
+					},
+				})
+			}
+		}
+	}
+	return tweets, nil
 }

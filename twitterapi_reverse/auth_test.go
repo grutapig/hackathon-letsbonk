@@ -38,7 +38,7 @@ func TestParseFromCurl(t *testing.T) {
 	fmt.Println(auth.XCSRFToken)
 	fmt.Println(auth.Cookie)
 	godotenv.Load("../.env")
-	service := NewTwitterReverseService(auth, os.Getenv(twitterapi.ENV_PROXY_DSN), false)
+	service := NewTwitterReverseApi(auth, os.Getenv(twitterapi.ENV_PROXY_DSN), false)
 	data, err := service.GetCommunityTweets("1914102634241577036", 20)
 	indent, err := json.MarshalIndent(data, "", "\t")
 	fmt.Println(string(indent))

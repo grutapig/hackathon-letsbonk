@@ -742,7 +742,7 @@ func (t *TelegramService) handleUpdateReverseAuthCommand(chatID int64, curlComma
 
 	t.SendMessage(chatID, "🧪 Testing reverse API with new credentials...")
 
-	reverseService := twitterapi_reverse.NewTwitterReverseService(auth, os.Getenv(ENV_PROXY_DSN), false)
+	reverseService := twitterapi_reverse.NewTwitterReverseApi(auth, os.Getenv(ENV_PROXY_DSN), false)
 
 	communityID := os.Getenv(ENV_DEMO_COMMUNITY_ID)
 	tweets, err := reverseService.GetCommunityTweets(communityID, 10)

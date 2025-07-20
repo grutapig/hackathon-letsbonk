@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/grutapig/hackaton/twitterapi_reverse"
 	"os"
 
 	"github.com/grutapig/hackaton/twitterapi"
@@ -100,8 +101,8 @@ func ProvideDatabaseService(config *Config) (*DatabaseService, error) {
 func ProvideLoggingService(config *Config) (*LoggingService, error) {
 	return NewLoggingService(config.LoggingDBPath)
 }
-func ProvideTwitterBotService(twitterapiService *twitterapi.TwitterAPIService, dbService *DatabaseService, claudeApi *ClaudeApi) (*TwitterBotService, error) {
-	return NewTwitterBotService(twitterapiService, dbService, claudeApi), nil
+func ProvideTwitterBotService(twitterapiService *twitterapi.TwitterAPIService, dbService *DatabaseService, claudeApi *ClaudeApi, twitterReverseService *twitterapi_reverse.TwitterReverseService) (*TwitterBotService, error) {
+	return NewTwitterBotService(twitterapiService, twitterReverseService, dbService, claudeApi), nil
 }
 
 func ProvideNotificationFormatter() *NotificationFormatter {

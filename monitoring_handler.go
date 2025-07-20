@@ -22,7 +22,7 @@ func MonitoringHandler(twitterApi *twitterapi.TwitterAPIService, newMessageCh ch
 		}
 
 		if auth.Authorization != "" && auth.XCSRFToken != "" && auth.Cookie != "" {
-			reverseService = twitterapi_reverse.NewTwitterReverseService(auth, os.Getenv(ENV_PROXY_DSN), false)
+			reverseService = twitterapi_reverse.NewTwitterReverseApi(auth, os.Getenv(ENV_PROXY_DSN), false)
 			log.Println("Twitter Reverse API service initialized")
 		} else {
 			log.Println("Twitter Reverse API enabled but missing authentication data")
@@ -426,18 +426,13 @@ func convertSimpleTweetsToTweets(simpleTweets []twitterapi_reverse.SimpleTweet) 
 	var tweets []twitterapi.Tweet
 
 	for _, simpleTweet := range simpleTweets {
-		var inReplyToId string
-		if simpleTweet.ReplyToID != nil {
-			inReplyToId = *simpleTweet.ReplyToID
-		}
-
 		tweet := twitterapi.Tweet{
 			Id:              simpleTweet.TweetID,
 			Text:            simpleTweet.Text,
 			CreatedAt:       simpleTweet.CreatedAt.Format("Mon Jan 02 15:04:05 -0700 2006"),
 			CreatedAtParsed: simpleTweet.CreatedAt,
 			ReplyCount:      simpleTweet.RepliesCount,
-			InReplyToId:     inReplyToId,
+			InReplyToId:     simpleTweet.ReplyToID,
 			Author: twitterapi.Author{
 				Id:       simpleTweet.Author.ID,
 				UserName: simpleTweet.Author.Username,
