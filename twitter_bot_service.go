@@ -6,6 +6,8 @@ import (
 	"github.com/grutapig/hackaton/twitterapi"
 	"log"
 	"os"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -23,7 +25,7 @@ type TwitterBotService struct {
 	monitoringMutex sync.Mutex
 }
 
-func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService) *TwitterBotService {
+func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, databaseService *DatabaseService) *TwitterBotService {
 	botTag := os.Getenv(ENV_TWITTER_BOT_TAG)
 	if botTag == "" {
 		panic("ENV_TWITTER_BOT_TAG environment variable is not set")
@@ -39,11 +41,12 @@ func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService) *TwitterBotS
 	}
 
 	return &TwitterBotService{
-		twitterAPI:  twitterAPI,
-		botTag:      botTag,
-		authSession: authSession,
-		proxyDsn:    proxyDSN,
-		knownTweets: make(map[string]bool),
+		twitterAPI:      twitterAPI,
+		databaseService: databaseService,
+		botTag:          botTag,
+		authSession:     authSession,
+		proxyDsn:        proxyDSN,
+		knownTweets:     make(map[string]bool),
 	}
 }
 
@@ -150,6 +153,16 @@ func (t *TwitterBotService) findNewTweets(tweets []twitterapi.Tweet) []twitterap
 func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 	responseText := fmt.Sprintf("Hello @%s! Thank you for mentioning me.", tweet.Author.UserName)
 
+	mentionedUsers := t.parseUserMentions(tweet.Text, tweet.Author.UserName)
+	if len(mentionedUsers) > 0 {
+		log.Printf("found users in message: %s", strings.Join(mentionedUsers, ","))
+		cacheInfo := t.getCacheAnalysisInfo(mentionedUsers)
+		if cacheInfo != "" {
+			responseText += "\n\n" + cacheInfo
+		}
+	}
+
+	log.Println(responseText)
 	postRequest := twitterapi.PostTweetRequest{
 		AuthSession:      t.authSession,
 		TweetText:        responseText,
@@ -164,4 +177,46 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 
 	log.Printf("Successfully responded to tweet %s with tweet %s", tweet.Id, response.Data.CreateTweet.TweetResult.Result.RestId)
 	return nil
+}
+
+func (t *TwitterBotService) parseUserMentions(text, currentUser string) []string {
+	re := regexp.MustCompile(`@([a-zA-Z0-9_]+)`)
+	matches := re.FindAllStringSubmatch(text, -1)
+
+	var users []string
+	for _, match := range matches {
+		username := strings.ToLower(match[1])
+		if username != strings.ToLower(currentUser) && username != strings.ToLower(strings.TrimPrefix(t.botTag, "@")) {
+			users = append(users, username)
+		}
+	}
+	return users
+}
+
+func (t *TwitterBotService) getCacheAnalysisInfo(usernames []string) string {
+	if t.databaseService == nil {
+		return ""
+	}
+
+	var results []string
+	for _, username := range usernames {
+		cached, err := t.databaseService.GetCachedAnalysisByUsername(username)
+		if err != nil {
+			log.Printf("Error getting cached analysis for %s: %v", username, err)
+			continue
+		}
+
+		if cached != nil {
+			info := fmt.Sprintf("@%s: %s (%.0f%% confidence)", username, cached.UserRiskLevel, cached.FUDProbability*100)
+			if cached.IsFUDUser {
+				info += fmt.Sprintf(" - FUD Type: %s", cached.FUDType)
+			}
+			results = append(results, info)
+		}
+	}
+
+	if len(results) > 0 {
+		return "Cache Analysis:\n" + strings.Join(results, "\n")
+	}
+	return ""
 }

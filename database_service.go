@@ -1043,6 +1043,15 @@ func (s *DatabaseService) GetUserInfo(userID string) (*UserModel, error) {
 	return &user, nil
 }
 
+func (s *DatabaseService) GetCachedAnalysisByUsername(username string) (*CachedAnalysisModel, error) {
+	var cached CachedAnalysisModel
+	err := s.db.Where("LOWER(username) = ?", strings.ToLower(username)).First(&cached).Error
+	if err != nil {
+		return nil, err
+	}
+	return &cached, nil
+}
+
 func (s *DatabaseService) Close() error {
 	sqlDB, err := s.db.DB()
 	if err != nil {

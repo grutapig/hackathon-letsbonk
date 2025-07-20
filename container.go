@@ -109,10 +109,6 @@ func ProvideTelegramService(config *Config, formatter *NotificationFormatter, db
 	return NewTelegramService(config.TelegramAPIKey, config.ProxyDSN, config.TelegramAdminChatID, formatter, dbService, channels.FudCh)
 }
 
-func ProvideTwitterBotService(twitterAPI *twitterapi.TwitterAPIService) *TwitterBotService {
-	return NewTwitterBotService(twitterAPI)
-}
-
 func ProvideCleanupScheduler(loggingService *LoggingService) *CleanupScheduler {
 	return NewCleanupScheduler(loggingService)
 }
@@ -150,10 +146,6 @@ func BuildContainer() (*dig.Container, error) {
 
 	if err := container.Provide(ProvideTelegramService); err != nil {
 		return nil, fmt.Errorf("failed to provide Telegram service: %w", err)
-	}
-
-	if err := container.Provide(ProvideTwitterBotService); err != nil {
-		return nil, fmt.Errorf("failed to provide Twitter bot service: %w", err)
 	}
 
 	if err := container.Provide(ProvideCleanupScheduler); err != nil {
