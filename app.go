@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"sync"
@@ -78,7 +79,7 @@ func (app *Application) Initialize() error {
 
 	log.Println("Initializing data...")
 	initializeData(app.databaseService, app.twitterAPI)
-
+	go app.twitterBotService.StartMonitoring(context.Background())
 	app.telegramService.StartListening()
 
 	return nil

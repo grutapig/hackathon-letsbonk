@@ -68,7 +68,7 @@ func (t *TwitterBotService) StartMonitoring(ctx context.Context) error {
 		return err
 	}
 
-	ticker := time.NewTicker(20 * time.Second)
+	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -170,6 +170,9 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 			repliedMessage = repliedToTweet
 			isMessageEvaluation = true
 		}
+	} else {
+		log.Printf("nothing asked: %s (%s)\n", tweet.Text, tweet.Author.UserName)
+		return nil
 	}
 
 	responseText, err := t.generateClaudeResponse(tweet.Text, repliedMessage, cacheData, isMessageEvaluation)
@@ -287,10 +290,10 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 	var userPrompt string
 
 	if isMessageEvaluation {
-		systemPrompt = "Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 characters)."
+		systemPrompt = "Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 characters). Do not respond on behalf of the community."
 		userPrompt = fmt.Sprintf("Tagger's message: %s\n\nMessage to evaluate: %s\n\nUser data:\n%s", originalMessage, repliedMessage, cacheData)
 	} else {
-		systemPrompt = "Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet (180 characters)."
+		systemPrompt = "Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet (180 characters). Do not respond on behalf of the community."
 		userPrompt = fmt.Sprintf("Original message: %s\n\nCache information:\n%s", originalMessage, cacheData)
 	}
 

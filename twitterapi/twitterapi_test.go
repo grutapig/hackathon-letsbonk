@@ -94,14 +94,14 @@ func TestTwitterAPIService_AdvancedSearch(t *testing.T) {
 
 	api := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
 	advancedSearchResponse, err := api.AdvancedSearch(AdvancedSearchRequest{
-		Query:     fmt.Sprintf("@EricVv8740"),
-		QueryType: TOP,
+		Query:     fmt.Sprintf("@GrutaPig"),
+		QueryType: LATEST,
 		Cursor:    "",
 	})
 	for i, tweet := range advancedSearchResponse.Tweets {
 		fmt.Println(i, tweet.Author.Id, tweet.Author.Name, tweet.Author.UserName, "tweet_id:", tweet.Id, tweet.CreatedAt, tweet.Text, tweet.ReplyCount, tweet.InReplyToId, err)
 	}
-	fmt.Println(advancedSearchResponse.NextCursor)
+	fmt.Println("tweets:", len(advancedSearchResponse.Tweets))
 }
 func TestTwitterAPIService_PostTweet(t *testing.T) {
 	godotenv.Load("../.env")

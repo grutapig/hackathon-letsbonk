@@ -100,6 +100,9 @@ func ProvideDatabaseService(config *Config) (*DatabaseService, error) {
 func ProvideLoggingService(config *Config) (*LoggingService, error) {
 	return NewLoggingService(config.LoggingDBPath)
 }
+func ProvideTwitterBotService(twitterapiService *twitterapi.TwitterAPIService, dbService *DatabaseService, claudeApi *ClaudeApi) (*TwitterBotService, error) {
+	return NewTwitterBotService(twitterapiService, dbService, claudeApi), nil
+}
 
 func ProvideNotificationFormatter() *NotificationFormatter {
 	return NewNotificationFormatter()
@@ -138,6 +141,10 @@ func BuildContainer() (*dig.Container, error) {
 
 	if err := container.Provide(ProvideLoggingService); err != nil {
 		return nil, fmt.Errorf("failed to provide logging service: %w", err)
+	}
+
+	if err := container.Provide(ProvideTwitterBotService); err != nil {
+		return nil, fmt.Errorf("failed to provide twitterbot service: %w", err)
 	}
 
 	if err := container.Provide(ProvideNotificationFormatter); err != nil {
