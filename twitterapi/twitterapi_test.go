@@ -90,7 +90,7 @@ func TestTwitterAPIService_GetUserFollowings(t *testing.T) {
 	}
 }
 func TestTwitterAPIService_AdvancedSearch(t *testing.T) {
-	godotenv.Load("../.dev.dark.env")
+	godotenv.Load("../.env")
 
 	api := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
 	advancedSearchResponse, err := api.AdvancedSearch(AdvancedSearchRequest{
@@ -101,4 +101,26 @@ func TestTwitterAPIService_AdvancedSearch(t *testing.T) {
 	for i, tweet := range advancedSearchResponse.Tweets {
 		fmt.Println(i, tweet.Author.Id, tweet.Author.Name, tweet.Author.UserName, "tweet_id:", tweet.Id, tweet.CreatedAt, tweet.Text, tweet.ReplyCount, tweet.InReplyToId, err)
 	}
+}
+func TestTwitterAPIService_PostTweet(t *testing.T) {
+	godotenv.Load("../.env")
+	api := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
+	postTweetResponse, err := api.PostTweet(PostTweetRequest{
+		AuthSession: os.Getenv(ENV_TWITTER_AUTH),
+		TweetText: `👤 User Details:
+• Username: @NyraanAlpha
+• Name: NyraanAlpha
+• https://x.com/NyraanAlpha
+• User ID: 1893424386146811904
+
+🔍 Analysis Results:
+• ✅ Status: Clean User
+• 🎯 FUD Type: none
+`,
+		QuoteTweetId:     "",
+		InReplyToTweetId: "1945799352942821483",
+		MediaId:          "",
+		Proxy:            os.Getenv(ENV_PROXY_DSN),
+	})
+	fmt.Println(postTweetResponse, err)
 }
