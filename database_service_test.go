@@ -10,17 +10,14 @@ import (
 )
 
 func setupTestDB(t *testing.T) *DatabaseService {
-	// Create temporary database file
+
 	dbPath := "test_database.db"
 
-	// Clean up any existing test database
 	os.Remove(dbPath)
 
-	// Create new database service
 	db, err := NewDatabaseService(dbPath)
 	require.NoError(t, err)
 
-	// Clean up function
 	t.Cleanup(func() {
 		db.Close()
 		os.Remove(dbPath)
@@ -32,7 +29,6 @@ func setupTestDB(t *testing.T) *DatabaseService {
 func TestDatabaseService_TweetOperations(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Test data
 	tweet := TweetModel{
 		ID:          "tweet_123",
 		Text:        "This is a test tweet about $RODF",
@@ -42,13 +38,11 @@ func TestDatabaseService_TweetOperations(t *testing.T) {
 		InReplyToID: "",
 	}
 
-	// Test SaveTweet
 	t.Run("SaveTweet", func(t *testing.T) {
 		err := db.SaveTweet(tweet)
 		assert.NoError(t, err)
 	})
 
-	// Test TweetExists
 	t.Run("TweetExists", func(t *testing.T) {
 		exists := db.TweetExists("tweet_123")
 		assert.True(t, exists)
@@ -57,7 +51,6 @@ func TestDatabaseService_TweetOperations(t *testing.T) {
 		assert.False(t, notExists)
 	})
 
-	// Test GetTweet
 	t.Run("GetTweet", func(t *testing.T) {
 		retrievedTweet, err := db.GetTweet("tweet_123")
 		assert.NoError(t, err)
@@ -67,14 +60,12 @@ func TestDatabaseService_TweetOperations(t *testing.T) {
 		assert.Equal(t, tweet.UserID, retrievedTweet.UserID)
 	})
 
-	// Test GetTweetReplyCount
 	t.Run("GetTweetReplyCount", func(t *testing.T) {
 		replyCount, err := db.GetTweetReplyCount("tweet_123")
 		assert.NoError(t, err)
 		assert.Equal(t, 5, replyCount)
 	})
 
-	// Test UpdateTweetReplyCount
 	t.Run("UpdateTweetReplyCount", func(t *testing.T) {
 		err := db.UpdateTweetReplyCount("tweet_123", 10)
 		assert.NoError(t, err)
@@ -84,7 +75,6 @@ func TestDatabaseService_TweetOperations(t *testing.T) {
 		assert.Equal(t, 10, replyCount)
 	})
 
-	// Test DeleteTweet
 	t.Run("DeleteTweet", func(t *testing.T) {
 		err := db.DeleteTweet("tweet_123")
 		assert.NoError(t, err)
@@ -97,7 +87,6 @@ func TestDatabaseService_TweetOperations(t *testing.T) {
 func TestDatabaseService_UserOperations(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Test data
 	user := UserModel{
 		ID:       "user_123",
 		Username: "testuser",
@@ -105,13 +94,11 @@ func TestDatabaseService_UserOperations(t *testing.T) {
 		IsFUD:    false,
 	}
 
-	// Test SaveUser
 	t.Run("SaveUser", func(t *testing.T) {
 		err := db.SaveUser(user)
 		assert.NoError(t, err)
 	})
 
-	// Test UserExists
 	t.Run("UserExists", func(t *testing.T) {
 		exists := db.UserExists("user_123")
 		assert.True(t, exists)
@@ -120,7 +107,6 @@ func TestDatabaseService_UserOperations(t *testing.T) {
 		assert.False(t, notExists)
 	})
 
-	// Test UserExistsByUsername
 	t.Run("UserExistsByUsername", func(t *testing.T) {
 		exists := db.UserExistsByUsername("testuser")
 		assert.True(t, exists)
@@ -129,7 +115,6 @@ func TestDatabaseService_UserOperations(t *testing.T) {
 		assert.False(t, notExists)
 	})
 
-	// Test GetUser
 	t.Run("GetUser", func(t *testing.T) {
 		retrievedUser, err := db.GetUser("user_123")
 		assert.NoError(t, err)
@@ -139,7 +124,6 @@ func TestDatabaseService_UserOperations(t *testing.T) {
 		assert.Equal(t, user.IsFUD, retrievedUser.IsFUD)
 	})
 
-	// Test GetUserByUsername
 	t.Run("GetUserByUsername", func(t *testing.T) {
 		retrievedUser, err := db.GetUserByUsername("testuser")
 		assert.NoError(t, err)
@@ -147,7 +131,6 @@ func TestDatabaseService_UserOperations(t *testing.T) {
 		assert.Equal(t, user.Username, retrievedUser.Username)
 	})
 
-	// Test DeleteUser
 	t.Run("DeleteUser", func(t *testing.T) {
 		err := db.DeleteUser("user_123")
 		assert.NoError(t, err)
@@ -160,7 +143,6 @@ func TestDatabaseService_UserOperations(t *testing.T) {
 func TestDatabaseService_FUDUserOperations(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Test data
 	fudUser := FUDUserModel{
 		UserID:         "fud_user_123",
 		Username:       "fuduser",
@@ -171,13 +153,11 @@ func TestDatabaseService_FUDUserOperations(t *testing.T) {
 		LastMessageID:  "msg_123",
 	}
 
-	// Test SaveFUDUser
 	t.Run("SaveFUDUser", func(t *testing.T) {
 		err := db.SaveFUDUser(fudUser)
 		assert.NoError(t, err)
 	})
 
-	// Test IsFUDUser
 	t.Run("IsFUDUser", func(t *testing.T) {
 		isFUD := db.IsFUDUser("fud_user_123")
 		assert.True(t, isFUD)
@@ -186,7 +166,6 @@ func TestDatabaseService_FUDUserOperations(t *testing.T) {
 		assert.False(t, notFUD)
 	})
 
-	// Test GetFUDUser
 	t.Run("GetFUDUser", func(t *testing.T) {
 		retrievedFUDUser, err := db.GetFUDUser("fud_user_123")
 		assert.NoError(t, err)
@@ -197,7 +176,6 @@ func TestDatabaseService_FUDUserOperations(t *testing.T) {
 		assert.Equal(t, fudUser.MessageCount, retrievedFUDUser.MessageCount)
 	})
 
-	// Test IncrementFUDUserMessageCount
 	t.Run("IncrementFUDUserMessageCount", func(t *testing.T) {
 		err := db.IncrementFUDUserMessageCount("fud_user_123", "msg_456")
 		assert.NoError(t, err)
@@ -208,9 +186,8 @@ func TestDatabaseService_FUDUserOperations(t *testing.T) {
 		assert.Equal(t, "msg_456", updatedFUDUser.LastMessageID)
 	})
 
-	// Test GetAllFUDUsers
 	t.Run("GetAllFUDUsers", func(t *testing.T) {
-		// Add another FUD user
+
 		fudUser2 := FUDUserModel{
 			UserID:         "fud_user_456",
 			Username:       "anotherfuduser",
@@ -228,7 +205,6 @@ func TestDatabaseService_FUDUserOperations(t *testing.T) {
 		assert.Len(t, allFUDUsers, 2)
 	})
 
-	// Test DeleteFUDUser
 	t.Run("DeleteFUDUser", func(t *testing.T) {
 		err := db.DeleteFUDUser("fud_user_123")
 		assert.NoError(t, err)
@@ -241,7 +217,6 @@ func TestDatabaseService_FUDUserOperations(t *testing.T) {
 func TestDatabaseService_RelationshipOperations(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Create a user first
 	user := UserModel{
 		ID:       "user_rel_123",
 		Username: "reluser",
@@ -250,7 +225,6 @@ func TestDatabaseService_RelationshipOperations(t *testing.T) {
 	err := db.SaveUser(user)
 	require.NoError(t, err)
 
-	// Create tweets
 	mainTweet := TweetModel{
 		ID:         "main_tweet_123",
 		Text:       "This is a main tweet about $RODF",
@@ -277,7 +251,6 @@ func TestDatabaseService_RelationshipOperations(t *testing.T) {
 		InReplyToID: "main_tweet_123",
 	}
 
-	// Save tweets
 	err = db.SaveTweet(mainTweet)
 	require.NoError(t, err)
 	err = db.SaveTweet(replyTweet1)
@@ -285,14 +258,12 @@ func TestDatabaseService_RelationshipOperations(t *testing.T) {
 	err = db.SaveTweet(replyTweet2)
 	require.NoError(t, err)
 
-	// Test GetTweetsByUser
 	t.Run("GetTweetsByUser", func(t *testing.T) {
 		userTweets, err := db.GetTweetsByUser("user_rel_123")
 		assert.NoError(t, err)
 		assert.Len(t, userTweets, 3)
 	})
 
-	// Test GetRepliesForTweet
 	t.Run("GetRepliesForTweet", func(t *testing.T) {
 		replies, err := db.GetRepliesForTweet("main_tweet_123")
 		assert.NoError(t, err)
@@ -305,7 +276,6 @@ func TestDatabaseService_RelationshipOperations(t *testing.T) {
 func TestDatabaseService_SearchOperations(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Create test tweets
 	tweets := []TweetModel{
 		{
 			ID:        "search_tweet_1",
@@ -332,23 +302,20 @@ func TestDatabaseService_SearchOperations(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Test SearchTweets
 	t.Run("SearchTweets", func(t *testing.T) {
 		results, err := db.SearchTweets("RODF", 10)
 		assert.NoError(t, err)
-		assert.Len(t, results, 2) // Should find both tweets containing "RODF"
+		assert.Len(t, results, 2)
 	})
 
-	// Test GetRecentTweets
 	t.Run("GetRecentTweets", func(t *testing.T) {
 		recentTweets, err := db.GetRecentTweets(2)
 		assert.NoError(t, err)
 		assert.Len(t, recentTweets, 2)
-		// Should be ordered by created_at DESC
+
 		assert.Equal(t, "search_tweet_1", recentTweets[0].ID)
 	})
 
-	// Test count operations
 	t.Run("CountOperations", func(t *testing.T) {
 		tweetCount, err := db.GetTweetCount()
 		assert.NoError(t, err)
@@ -356,20 +323,17 @@ func TestDatabaseService_SearchOperations(t *testing.T) {
 
 		userCount, err := db.GetUserCount()
 		assert.NoError(t, err)
-		assert.Equal(t, int64(0), userCount) // No users saved in this test
+		assert.Equal(t, int64(0), userCount)
 
 		fudUserCount, err := db.GetFUDUserCount()
 		assert.NoError(t, err)
-		assert.Equal(t, int64(0), fudUserCount) // No FUD users saved in this test
+		assert.Equal(t, int64(0), fudUserCount)
 	})
 }
 
 func TestDatabaseService_ComplexScenario(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Simulate a complete scenario: user creates tweets, gets flagged as FUD
-
-	// 1. Create user
 	user := UserModel{
 		ID:       "complex_user_123",
 		Username: "complexuser",
@@ -378,7 +342,6 @@ func TestDatabaseService_ComplexScenario(t *testing.T) {
 	err := db.SaveUser(user)
 	require.NoError(t, err)
 
-	// 2. User creates some tweets
 	tweets := []TweetModel{
 		{
 			ID:         "complex_tweet_1",
@@ -409,7 +372,6 @@ func TestDatabaseService_ComplexScenario(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// 3. User gets flagged as FUD
 	fudUser := FUDUserModel{
 		UserID:         "complex_user_123",
 		Username:       "complexuser",
@@ -422,26 +384,19 @@ func TestDatabaseService_ComplexScenario(t *testing.T) {
 	err = db.SaveFUDUser(fudUser)
 	require.NoError(t, err)
 
-	// 4. Verify the complete scenario
-
-	// Check user exists
 	assert.True(t, db.UserExists("complex_user_123"))
 
-	// Check user tweets
 	userTweets, err := db.GetTweetsByUser("complex_user_123")
 	assert.NoError(t, err)
 	assert.Len(t, userTweets, 3)
 
-	// Check FUD status
 	assert.True(t, db.IsFUDUser("complex_user_123"))
 
-	// Check replies
 	replies, err := db.GetRepliesForTweet("complex_tweet_2")
 	assert.NoError(t, err)
 	assert.Len(t, replies, 1)
 	assert.Equal(t, "complex_tweet_3", replies[0].ID)
 
-	// Search for FUD content
 	fudTweets, err := db.SearchTweets("FUD", 10)
 	assert.NoError(t, err)
 	assert.Len(t, fudTweets, 1)

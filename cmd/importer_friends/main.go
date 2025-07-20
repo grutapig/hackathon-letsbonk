@@ -14,7 +14,7 @@ import (
 type FriendResult struct {
 	Username   string
 	UserID     string
-	FriendType string // "follower" or "following"
+	FriendType string
 	Friends    []twitterapi.User
 	Error      error
 }
@@ -29,7 +29,6 @@ func main() {
 	err := godotenv.Load()
 	panicErr(err)
 
-	// Read community_tweets.csv to get unique authors
 	fmt.Println("📖 Reading community_tweets.csv...")
 	r, err := os.OpenFile("community_tweets.csv", os.O_RDONLY, 0655)
 	panicErr(err)
@@ -39,26 +38,23 @@ func main() {
 	rows, err := cursor.ReadAll()
 	panicErr(err)
 
-	// Extract unique authors with their IDs
-	authorsMap := map[string]string{} // username -> userID
-	for _, row := range rows[1:] {    // Skip header
+	authorsMap := map[string]string{}
+	for _, row := range rows[1:] {
 		if len(row) >= 7 {
-			username := row[0] // message_author
-			userID := row[6]   // author_id
+			username := row[0]
+			userID := row[6]
 			authorsMap[username] = userID
 		}
 	}
 
 	fmt.Printf("📊 Found %d unique authors in community\n", len(authorsMap))
 
-	// Initialize Twitter API
 	api := twitterapi.NewTwitterAPIService(
 		os.Getenv(twitterapi.ENV_TWITTER_API_KEY),
 		os.Getenv(twitterapi.ENV_TWITTER_API_BASE_URL),
 		os.Getenv(twitterapi.ENV_PROXY_DSN),
 	)
 
-	// Create/open output CSV file
 	w, err := os.OpenFile("friends_data.csv", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0655)
 	panicErr(err)
 	defer w.Close()
@@ -66,28 +62,25 @@ func main() {
 	writer := csv.NewWriter(w)
 	defer writer.Flush()
 
-	// Write CSV headers
 	headers := []string{
 		"user_username",
 		"user_id",
 		"friend_username",
 		"friend_id",
 		"friend_name",
-		"friend_type", // "follower" or "following"
+		"friend_type",
 		"scraped_at",
 	}
 	err = writer.Write(headers)
 	panicErr(err)
 	writer.Flush()
 
-	// Convert map to sorted slice for consistent processing
 	authors := make([]string, 0, len(authorsMap))
 	for username := range authorsMap {
 		authors = append(authors, username)
 	}
 	sort.Strings(authors)
 
-	// Setup channels for parallel processing
 	userCh := make(chan struct {
 		Username string
 		UserID   string
@@ -95,7 +88,6 @@ func main() {
 
 	resultCh := make(chan FriendResult, 100)
 
-	// Start worker goroutines (10 parallel workers)
 	wgWorkers := sync.WaitGroup{}
 	for i := 0; i < 10; i++ {
 		wgWorkers.Add(1)
@@ -104,7 +96,6 @@ func main() {
 			for user := range userCh {
 				fmt.Printf("🔄 Worker %d: Processing @%s\n", workerID, user.Username)
 
-				// Get followers
 				followersResult := FriendResult{
 					Username:   user.Username,
 					UserID:     user.UserID,
@@ -131,7 +122,6 @@ func main() {
 
 				resultCh <- followersResult
 
-				// Get followings
 				followingsResult := FriendResult{
 					Username:   user.Username,
 					UserID:     user.UserID,
@@ -161,7 +151,6 @@ func main() {
 		}(i)
 	}
 
-	// Start result processor goroutine
 	wgProcessor := sync.WaitGroup{}
 	wgProcessor.Add(1)
 
@@ -180,7 +169,6 @@ func main() {
 
 			scrapedAt := time.Now().Format(time.RFC3339)
 
-			// Write each friend to CSV
 			for _, friend := range result.Friends {
 				record := []string{
 					result.Username,
@@ -202,7 +190,6 @@ func main() {
 
 			writer.Flush()
 
-			// Count processed users (both followers and followings count as one user)
 			if result.FriendType == "following" {
 				processedUsers++
 				elapsed := time.Since(startTime)
@@ -216,13 +203,11 @@ func main() {
 		}
 	}()
 
-	// Start workers closer
 	go func() {
 		wgWorkers.Wait()
 		close(resultCh)
 	}()
 
-	// Send work to workers
 	fmt.Println("🚀 Starting friends import with 10 parallel workers...")
 	for i, username := range authors {
 		userID := authorsMap[username]

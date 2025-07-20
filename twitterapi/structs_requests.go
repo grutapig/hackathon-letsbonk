@@ -57,8 +57,8 @@ type NewMessage struct {
 	RetweetCount      int
 	IsManualAnalysis  bool
 	ForceNotification bool
-	TaskID            string // For tracking manual analysis progress
-	TelegramChatID    int64  // Optional: if set, send notification only to this chat
+	TaskID            string
+	TelegramChatID    int64
 }
 type PostTweetRequest struct {
 	AuthSession      string `json:"auth_session"`
@@ -92,6 +92,6 @@ const TOP = "Top"
 
 type AdvancedSearchRequest struct {
 	Query     string `json:"query"`
-	QueryType string `json:"query_type,omitempty"` // "Latest" or "Top", default: Latest
-	Cursor    string `json:"cursor,omitempty"`     // For pagination, first page = ""
+	QueryType string `json:"query_type,omitempty"`
+	Cursor    string `json:"cursor,omitempty"`
 }

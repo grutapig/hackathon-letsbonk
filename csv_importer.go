@@ -233,10 +233,10 @@ func (c *CSVImporter) importTweet(tweetData CSVTweetData, replyToID string) bool
 
 func (c *CSVImporter) parseDate(dateStr string) (time.Time, error) {
 	formats := []string{
-		"Mon Jan 02 15:04:05 -0700 2006", // Twitter format
-		"2006-01-02 15:04:05",            // SQL format
-		"2006-01-02T15:04:05Z",           // ISO format
-		"2006-01-02",                     // Date only
+		"Mon Jan 02 15:04:05 -0700 2006",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05Z",
+		"2006-01-02",
 	}
 
 	for _, format := range formats {

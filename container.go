@@ -8,7 +8,6 @@ import (
 	"go.uber.org/dig"
 )
 
-// Config holds configuration values
 type Config struct {
 	ClaudeAPIKey         string
 	ProxyClaudeDSN       string
@@ -25,7 +24,6 @@ type Config struct {
 	ClearAnalysisOnStart bool
 }
 
-// Channels holds all application channels
 type Channels struct {
 	NewMessageCh   chan twitterapi.NewMessage
 	FirstStepCh    chan twitterapi.NewMessage
@@ -34,7 +32,6 @@ type Channels struct {
 	NotificationCh chan FUDAlertNotification
 }
 
-// ProvideConfig creates configuration from environment variables
 func ProvideConfig() (*Config, error) {
 	ticker := os.Getenv(ENV_TWITTER_COMMUNITY_TICKER)
 	if ticker == "" {
@@ -78,7 +75,6 @@ func ProvideConfig() (*Config, error) {
 	}, nil
 }
 
-// ProvideChannels creates all application channels
 func ProvideChannels() *Channels {
 	return &Channels{
 		NewMessageCh:   make(chan twitterapi.NewMessage, 10),
@@ -89,56 +85,41 @@ func ProvideChannels() *Channels {
 	}
 }
 
-// ProvideClaudeAPI creates Claude API client
 func ProvideClaudeAPI(config *Config) (*ClaudeApi, error) {
 	return NewClaudeClient(config.ClaudeAPIKey, config.ProxyClaudeDSN, CLAUDE_MODEL)
 }
 
-// ProvideTwitterAPI creates Twitter API service
 func ProvideTwitterAPI(config *Config) *twitterapi.TwitterAPIService {
 	return twitterapi.NewTwitterAPIService(config.TwitterAPIKey, config.TwitterAPIBaseURL, config.ProxyDSN)
 }
 
-// ProvideDatabaseService creates database service
 func ProvideDatabaseService(config *Config) (*DatabaseService, error) {
 	return NewDatabaseService(config.DatabaseName)
 }
 
-// ProvideLoggingService creates logging service
 func ProvideLoggingService(config *Config) (*LoggingService, error) {
 	return NewLoggingService(config.LoggingDBPath)
 }
 
-// ProvideNotificationFormatter creates notification formatter
 func ProvideNotificationFormatter() *NotificationFormatter {
 	return NewNotificationFormatter()
 }
 
-// ProvideTelegramService creates Telegram service
 func ProvideTelegramService(config *Config, formatter *NotificationFormatter, dbService *DatabaseService, channels *Channels) (*TelegramService, error) {
 	return NewTelegramService(config.TelegramAPIKey, config.ProxyDSN, config.TelegramAdminChatID, formatter, dbService, channels.FudCh)
 }
 
-// ProvideUserStatusManager creates user status manager - DEPRECATED: functionality moved to DatabaseService
-// func ProvideUserStatusManager() *UserStatusManager {
-// 	return NewUserStatusManager()
-// }
-
-// ProvideTwitterBotService creates Twitter bot service
 func ProvideTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, claudeAPI *ClaudeApi, dbService *DatabaseService) *TwitterBotService {
 	return NewTwitterBotService(twitterAPI, claudeAPI, dbService)
 }
 
-// ProvideCleanupScheduler creates cleanup scheduler
 func ProvideCleanupScheduler(loggingService *LoggingService) *CleanupScheduler {
 	return NewCleanupScheduler(loggingService)
 }
 
-// BuildContainer creates and configures the DI container
 func BuildContainer() (*dig.Container, error) {
 	container := dig.New()
 
-	// Register providers
 	if err := container.Provide(ProvideConfig); err != nil {
 		return nil, fmt.Errorf("failed to provide config: %w", err)
 	}
@@ -170,11 +151,6 @@ func BuildContainer() (*dig.Container, error) {
 	if err := container.Provide(ProvideTelegramService); err != nil {
 		return nil, fmt.Errorf("failed to provide Telegram service: %w", err)
 	}
-
-	// User status management is now handled by DatabaseService
-	// if err := container.Provide(ProvideUserStatusManager); err != nil {
-	// 	return nil, fmt.Errorf("failed to provide user status manager: %w", err)
-	// }
 
 	if err := container.Provide(ProvideTwitterBotService); err != nil {
 		return nil, fmt.Errorf("failed to provide Twitter bot service: %w", err)

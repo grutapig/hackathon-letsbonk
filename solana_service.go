@@ -623,70 +623,58 @@ func writeToFile(filename string, data []byte) error {
 	return nil
 }
 
-// TokenPriceData represents daily token price and liquidity data
 type TokenPriceData struct {
 	Date         time.Time `json:"date"`
-	PriceSOL     float64   `json:"price_sol"`     // Price in SOL
-	PriceUSD     float64   `json:"price_usd"`     // Price in USD
-	LiquiditySOL float64   `json:"liquidity_sol"` // Liquidity in SOL
-	LiquidityUSD float64   `json:"liquidity_usd"` // Liquidity in USD
-	TotalSupply  float64   `json:"total_supply"`  // Total token supply
-	MarketCap    float64   `json:"market_cap"`    // Market cap in USD
-	Volume24h    float64   `json:"volume_24h"`    // 24h trading volume in USD
+	PriceSOL     float64   `json:"price_sol"`
+	PriceUSD     float64   `json:"price_usd"`
+	LiquiditySOL float64   `json:"liquidity_sol"`
+	LiquidityUSD float64   `json:"liquidity_usd"`
+	TotalSupply  float64   `json:"total_supply"`
+	MarketCap    float64   `json:"market_cap"`
+	Volume24h    float64   `json:"volume_24h"`
 }
 
-// ScanTokenHistoryFake generates fake token price/liquidity data for testing
-// contractAddress: token contract address
-// fromDate: start date (optional, defaults to 100 days ago)
-// toDate: end date (optional, defaults to today)
-// Returns a channel that sends one TokenPriceData per day
 func (s *SolanaService) ScanTokenHistoryFake(contractAddress string, fromDate, toDate *time.Time) <-chan TokenPriceData {
 	ch := make(chan TokenPriceData, 10)
 
 	go func() {
 		defer close(ch)
 
-		// Set default dates if not provided
 		endDate := time.Now()
 		if toDate != nil {
 			endDate = *toDate
 		}
 
-		startDate := endDate.AddDate(0, 0, -100) // 100 days ago
+		startDate := endDate.AddDate(0, 0, -100)
 		if fromDate != nil {
 			startDate = *fromDate
 		}
 
-		// Ensure start date is before end date
 		if startDate.After(endDate) {
 			startDate, endDate = endDate, startDate
 		}
 
-		// Generate seed based on contract address for consistent fake data
 		seed := int64(0)
 		for _, char := range contractAddress {
 			seed += int64(char)
 		}
 		rng := rand.New(rand.NewSource(seed))
 
-		// Initial values (realistic for a memecoin)
-		baseSOLPrice := 150.0 + rng.Float64()*50                     // SOL price in USD (150-200)
-		basePriceSOL := 0.000001 + rng.Float64()*0.00001             // Token price in SOL
-		baseLiquiditySOL := 100.0 + rng.Float64()*900                // Liquidity in SOL (100-1000)
-		baseTotalSupply := 1000000000.0 + rng.Float64()*9000000000.0 // Total supply (1B-10B)
+		baseSOLPrice := 150.0 + rng.Float64()*50
+		basePriceSOL := 0.000001 + rng.Float64()*0.00001
+		baseLiquiditySOL := 100.0 + rng.Float64()*900
+		baseTotalSupply := 1000000000.0 + rng.Float64()*9000000000.0
 
-		// Volatility parameters
-		priceVolatility := 0.05 + rng.Float64()*0.15     // 5-20% daily volatility
-		liquidityVolatility := 0.02 + rng.Float64()*0.08 // 2-10% liquidity volatility
-		solPriceVolatility := 0.01 + rng.Float64()*0.04  // 1-5% SOL price volatility
+		priceVolatility := 0.05 + rng.Float64()*0.15
+		liquidityVolatility := 0.02 + rng.Float64()*0.08
+		solPriceVolatility := 0.01 + rng.Float64()*0.04
 
-		// Trend parameters
-		trendDuration := 5 + rng.Intn(15) // Trend lasts 5-20 days
+		trendDuration := 5 + rng.Intn(15)
 		trendDirection := 1.0
 		if rng.Float64() > 0.5 {
 			trendDirection = -1.0
 		}
-		trendStrength := 0.01 + rng.Float64()*0.03 // 1-4% daily trend
+		trendStrength := 0.01 + rng.Float64()*0.03
 
 		dayCount := 0
 		currentSOLPrice := baseSOLPrice
@@ -694,20 +682,17 @@ func (s *SolanaService) ScanTokenHistoryFake(contractAddress string, fromDate, t
 		currentLiquiditySOL := baseLiquiditySOL
 		currentTotalSupply := baseTotalSupply
 
-		// Iterate through each day
 		for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
 			dayCount++
 
-			// Change trend direction occasionally
 			if dayCount%trendDuration == 0 {
-				if rng.Float64() > 0.3 { // 70% chance to change trend
+				if rng.Float64() > 0.3 {
 					trendDirection *= -1.0
 				}
 				trendStrength = 0.01 + rng.Float64()*0.03
 				trendDuration = 5 + rng.Intn(15)
 			}
 
-			// Update SOL price with trend and volatility
 			solChange := (rng.NormFloat64() * solPriceVolatility) + (trendDirection * trendStrength * 0.3)
 			currentSOLPrice *= (1.0 + solChange)
 			if currentSOLPrice < 50 {
@@ -717,7 +702,6 @@ func (s *SolanaService) ScanTokenHistoryFake(contractAddress string, fromDate, t
 				currentSOLPrice = 300
 			}
 
-			// Update token price in SOL with higher volatility and trend
 			priceChange := (rng.NormFloat64() * priceVolatility) + (trendDirection * trendStrength)
 			currentPriceSOL *= (1.0 + priceChange)
 			if currentPriceSOL < 0.0000001 {
@@ -727,7 +711,6 @@ func (s *SolanaService) ScanTokenHistoryFake(contractAddress string, fromDate, t
 				currentPriceSOL = 0.01
 			}
 
-			// Update liquidity with some correlation to price
 			liquidityChange := (rng.NormFloat64() * liquidityVolatility) + (priceChange * 0.3)
 			currentLiquiditySOL *= (1.0 + liquidityChange)
 			if currentLiquiditySOL < 10 {
@@ -737,42 +720,38 @@ func (s *SolanaService) ScanTokenHistoryFake(contractAddress string, fromDate, t
 				currentLiquiditySOL = 5000
 			}
 
-			// Occasionally adjust total supply (burns/mints)
-			if rng.Float64() < 0.05 { // 5% chance per day
-				supplyChange := rng.NormFloat64() * 0.02 // ±2% change
+			if rng.Float64() < 0.05 {
+				supplyChange := rng.NormFloat64() * 0.02
 				currentTotalSupply *= (1.0 + supplyChange)
 				if currentTotalSupply < 100000000 {
 					currentTotalSupply = 100000000
 				}
 			}
 
-			// Calculate derived values
 			priceUSD := currentPriceSOL * currentSOLPrice
 			liquidityUSD := currentLiquiditySOL * currentSOLPrice
 			marketCap := currentTotalSupply * priceUSD
 
-			// Generate fake 24h volume (correlated with liquidity and volatility)
-			volumeBase := liquidityUSD * (0.1 + rng.Float64()*0.9) // 10-100% of liquidity
-			volumeVolatility := math.Abs(priceChange) * 5.0        // Higher volume on volatile days
+			volumeBase := liquidityUSD * (0.1 + rng.Float64()*0.9)
+			volumeVolatility := math.Abs(priceChange) * 5.0
 			volume24h := volumeBase * (1.0 + volumeVolatility)
 
 			data := TokenPriceData{
 				Date:         d,
-				PriceSOL:     math.Round(currentPriceSOL*1000000000) / 1000000000, // Round to 9 decimals
+				PriceSOL:     math.Round(currentPriceSOL*1000000000) / 1000000000,
 				PriceUSD:     math.Round(priceUSD*1000000000) / 1000000000,
-				LiquiditySOL: math.Round(currentLiquiditySOL*100) / 100, // Round to 2 decimals
+				LiquiditySOL: math.Round(currentLiquiditySOL*100) / 100,
 				LiquidityUSD: math.Round(liquidityUSD*100) / 100,
 				TotalSupply:  math.Round(currentTotalSupply),
 				MarketCap:    math.Round(marketCap*100) / 100,
 				Volume24h:    math.Round(volume24h*100) / 100,
 			}
 
-			// Send data through channel with small delay to simulate real processing
 			select {
 			case ch <- data:
-				time.Sleep(time.Millisecond * 10) // 10ms delay between records
+				time.Sleep(time.Millisecond * 10)
 			default:
-				// Channel is full, skip this data point
+
 			}
 		}
 	}()
@@ -780,15 +759,11 @@ func (s *SolanaService) ScanTokenHistoryFake(contractAddress string, fromDate, t
 	return ch
 }
 
-// GetTokenHistoryFakeSlice returns fake token data as a slice instead of channel
-// Useful when you need all data at once
 func (s *SolanaService) GetTokenHistoryFakeSlice(contractAddress string, fromDate, toDate *time.Time) []TokenPriceData {
 	var data []TokenPriceData
 
-	// Get data from channel
 	dataChan := s.ScanTokenHistoryFake(contractAddress, fromDate, toDate)
 
-	// Collect all data from channel
 	for record := range dataChan {
 		data = append(data, record)
 	}
@@ -796,7 +771,6 @@ func (s *SolanaService) GetTokenHistoryFakeSlice(contractAddress string, fromDat
 	return data
 }
 
-// GetTokenHistoryFakeSummary returns summary statistics for fake token data
 func (s *SolanaService) GetTokenHistoryFakeSummary(contractAddress string, fromDate, toDate *time.Time) TokenSummary {
 	data := s.GetTokenHistoryFakeSlice(contractAddress, fromDate, toDate)
 
@@ -820,7 +794,7 @@ func (s *SolanaService) GetTokenHistoryFakeSummary(contractAddress string, fromD
 	var totalLiquidity float64
 
 	for _, record := range data {
-		// Update min/max prices
+
 		if record.PriceUSD > summary.MaxPrice {
 			summary.MaxPrice = record.PriceUSD
 		}
@@ -828,15 +802,12 @@ func (s *SolanaService) GetTokenHistoryFakeSummary(contractAddress string, fromD
 			summary.MinPrice = record.PriceUSD
 		}
 
-		// Accumulate totals
 		summary.TotalVolume += record.Volume24h
 		totalLiquidity += record.LiquidityUSD
 	}
 
-	// Calculate averages
 	summary.AvgLiquidity = totalLiquidity / float64(len(data))
 
-	// Calculate price change percentage
 	if summary.StartPrice > 0 {
 		summary.PriceChangePercent = ((summary.EndPrice - summary.StartPrice) / summary.StartPrice) * 100
 	}
@@ -844,7 +815,6 @@ func (s *SolanaService) GetTokenHistoryFakeSummary(contractAddress string, fromD
 	return summary
 }
 
-// TokenSummary represents summary statistics for token data
 type TokenSummary struct {
 	ContractAddress    string    `json:"contract_address"`
 	StartDate          time.Time `json:"start_date"`

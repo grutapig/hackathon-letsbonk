@@ -35,13 +35,13 @@ type TelegramService struct {
 	notifMutex    sync.RWMutex
 	formatter     *NotificationFormatter
 	dbService     *DatabaseService
-	// Services for manual analysis
-	twitterApi             interface{}                // Will be set later
-	claudeApi              interface{}                // Will be set later
-	systemPromptSecondStep []byte                     // Will be set later
-	ticker                 string                     // Will be set later
-	analysisChannel        chan twitterapi.NewMessage // Channel for manual analysis requests
-	loggingService         *LoggingService            // Logging service for analytics
+
+	twitterApi             interface{}
+	claudeApi              interface{}
+	systemPromptSecondStep []byte
+	ticker                 string
+	analysisChannel        chan twitterapi.NewMessage
+	loggingService         *LoggingService
 }
 
 type TelegramUpdate struct {
@@ -138,7 +138,7 @@ func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, f
 	if err == nil {
 		chatIDStrings := strings.Split(string(data), "\n")
 		for _, chatIDStr := range chatIDStrings {
-			chatIDStr = strings.TrimSpace(chatIDStr) // Remove spaces
+			chatIDStr = strings.TrimSpace(chatIDStr)
 			if chatIDStr != "" {
 				if chatID, err := strconv.ParseInt(chatIDStr, 10, 64); err == nil {
 					service.chatIDs[chatID] = true
@@ -149,11 +149,11 @@ func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, f
 			}
 		}
 	}
-	// Add initial chat IDs if provided (comma-separated)
+
 	if initialChatIDs != "" {
 		chatIDStrings := strings.Split(initialChatIDs, ",")
 		for _, chatIDStr := range chatIDStrings {
-			chatIDStr = strings.TrimSpace(chatIDStr) // Remove spaces
+			chatIDStr = strings.TrimSpace(chatIDStr)
 			if chatIDStr != "" {
 				if chatID, err := strconv.ParseInt(chatIDStr, 10, 64); err == nil {
 					service.chatIDs[chatID] = true
@@ -182,7 +182,6 @@ func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, f
 	return service, nil
 }
 
-// SetAnalysisServices sets the services needed for manual analysis
 func (t *TelegramService) SetAnalysisServices(twitterApi interface{}, claudeApi interface{}, systemPromptSecondStep []byte, ticker string) {
 	t.twitterApi = twitterApi
 	t.claudeApi = claudeApi
@@ -240,14 +239,12 @@ func (t *TelegramService) processUpdates() error {
 	for _, update := range updates {
 		t.lastOffset = update.UpdateID + 1
 
-		// Add new chat ID if not exists
 		chatID := update.Message.Chat.ID
 		t.chatMutex.Lock()
 		if !t.chatIDs[chatID] {
 			t.chatIDs[chatID] = true
 			log.Printf("New Telegram chat registered: %d (from: %s)", chatID, update.Message.From.FirstName)
 
-			// Send chat info as response
 			info := fmt.Sprintf("✅ Chat registered!\nChat ID: %d\nUser: %s %s\nUsername: @%s",
 				chatID,
 				update.Message.From.FirstName,
@@ -258,11 +255,9 @@ func (t *TelegramService) processUpdates() error {
 		}
 		t.chatMutex.Unlock()
 
-		// Handle commands and messages
 		if update.Message.Text != "" {
 			text := strings.TrimSpace(update.Message.Text)
 
-			// Parse command and arguments
 			parts := strings.Fields(text)
 			if len(parts) == 0 {
 				return nil
@@ -505,24 +500,21 @@ func (t *TelegramService) generateTaskID() (string, error) {
 }
 
 func (t *TelegramService) SendDocument(chatID int64, filePath string, caption string) error {
-	// Open the file
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
 
-	// Create multipart form
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
 
-	// Add chat_id field
 	err = writer.WriteField("chat_id", strconv.FormatInt(chatID, 10))
 	if err != nil {
 		return err
 	}
 
-	// Add caption field if provided
 	if caption != "" {
 		err = writer.WriteField("caption", caption)
 		if err != nil {
@@ -534,7 +526,6 @@ func (t *TelegramService) SendDocument(chatID int64, filePath string, caption st
 		}
 	}
 
-	// Add file field
 	part, err := writer.CreateFormFile("document", filepath.Base(filePath))
 	if err != nil {
 		return err
@@ -550,7 +541,6 @@ func (t *TelegramService) SendDocument(chatID int64, filePath string, caption st
 		return err
 	}
 
-	// Send request
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendDocument", t.apiKey)
 	resp, err := t.client.Post(url, writer.FormDataContentType(), &requestBody)
 	if err != nil {
@@ -613,22 +603,20 @@ func (t *TelegramService) generateNotificationID() string {
 }
 
 func (t *TelegramService) StoreAndBroadcastNotification(alert FUDAlertNotification) error {
-	// Generate unique ID and store notification
+
 	notificationID := t.generateNotificationID()
 
 	t.notifMutex.Lock()
 	t.notifications[notificationID] = alert
 	t.notifMutex.Unlock()
 
-	// Format message with detail command
 	telegramMessage := t.formatter.FormatForTelegramWithDetail(alert, notificationID)
 
-	// Broadcast to all chats
 	return t.BroadcastMessage(telegramMessage)
 }
 
 func (t *TelegramService) handleDetailCommand(chatID int64, command string) {
-	// Extract notification ID from command "/detail_12345abc"
+
 	prefix := "/detail_"
 	if !strings.HasPrefix(command, prefix) {
 		t.SendMessage(chatID, "❌ Invalid command format. Use /detail_<id>")
@@ -646,13 +634,12 @@ func (t *TelegramService) handleDetailCommand(chatID int64, command string) {
 		return
 	}
 
-	// Send detailed information
 	detailMessage := t.formatter.FormatDetailedView(alert)
 	t.SendMessage(chatID, detailMessage)
 }
 
 func (t *TelegramService) handleHistoryCommand(chatID int64, command string) {
-	// Extract username from command "/history_username"
+
 	prefix := "/history_"
 	if !strings.HasPrefix(command, prefix) {
 		t.SendMessage(chatID, "❌ Invalid command format. Use /history_username")
@@ -661,7 +648,6 @@ func (t *TelegramService) handleHistoryCommand(chatID int64, command string) {
 
 	username := strings.TrimPrefix(command, prefix)
 
-	// Get 20 latest messages for the user
 	tweets, err := t.dbService.GetUserMessagesByUsername(username, 20)
 	if err != nil {
 		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving messages for @%s: %v", username, err))
@@ -673,7 +659,6 @@ func (t *TelegramService) handleHistoryCommand(chatID int64, command string) {
 		return
 	}
 
-	// Format the message history
 	var historyMessage strings.Builder
 	historyMessage.WriteString(fmt.Sprintf("📝 <b>Message History for @%s</b> (Last 20)\n\n", username))
 
@@ -686,14 +671,13 @@ func (t *TelegramService) handleHistoryCommand(chatID int64, command string) {
 		historyMessage.WriteString(fmt.Sprintf("🆔 <code>%s</code>\n\n", tweet.ID))
 	}
 
-	// Add command for full export
 	historyMessage.WriteString(fmt.Sprintf("📄 For full message history: /export_%s", username))
 
 	t.SendMessage(chatID, historyMessage.String())
 }
 
 func (t *TelegramService) handleTickerHistoryCommand(chatID int64, command string) {
-	// Extract username from command "/ticker_history_username"
+
 	prefix := "/ticker_history_"
 	if !strings.HasPrefix(command, prefix) {
 		t.SendMessage(chatID, "❌ Invalid command format. Use /ticker_history_username")
@@ -701,9 +685,8 @@ func (t *TelegramService) handleTickerHistoryCommand(chatID int64, command strin
 	}
 
 	username := strings.TrimPrefix(command, prefix)
-	ticker := t.ticker // Use the ticker from the environment
+	ticker := t.ticker
 
-	// Get ALL ticker-related messages for the user (no limit for checking count)
 	allOpinions, err := t.dbService.GetUserTickerOpinionsByUsername(username, ticker, 0)
 	if err != nil {
 		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving ticker history for @%s: %v", username, err))
@@ -715,14 +698,12 @@ func (t *TelegramService) handleTickerHistoryCommand(chatID int64, command strin
 		return
 	}
 
-	// If more than 15 items, export as file
 	if len(allOpinions) > 15 {
 		t.SendMessage(chatID, fmt.Sprintf("📊 Found %d ticker mentions for @%s (%s). Generating file...", len(allOpinions), username, ticker))
 		t.exportTickerHistoryAsFile(chatID, username, ticker, allOpinions)
 		return
 	}
 
-	// Format the ticker history message for small datasets
 	var historyMessage strings.Builder
 	historyMessage.WriteString(fmt.Sprintf("💰 <b>Ticker History for @%s (%s)</b> (%d messages)\n\n", username, ticker, len(allOpinions)))
 
@@ -730,7 +711,6 @@ func (t *TelegramService) handleTickerHistoryCommand(chatID int64, command strin
 		historyMessage.WriteString(fmt.Sprintf("<b>%d.</b> %s\n", i+1, opinion.TweetCreatedAt.Format("2006-01-02 15:04")))
 		historyMessage.WriteString(fmt.Sprintf("💬 <i>%s</i>\n", t.truncateText(opinion.Text, 200)))
 
-		// Show reply context if available
 		if opinion.InReplyToID != "" && opinion.RepliedToAuthor != "" {
 			historyMessage.WriteString(fmt.Sprintf("↳ <i>Reply to @%s: %s</i>\n",
 				opinion.RepliedToAuthor,
@@ -741,7 +721,6 @@ func (t *TelegramService) handleTickerHistoryCommand(chatID int64, command strin
 		historyMessage.WriteString(fmt.Sprintf("🔍 <i>Search: %s</i>\n\n", opinion.SearchQuery))
 	}
 
-	// Add summary
 	historyMessage.WriteString(fmt.Sprintf("📊 Total ticker mentions: %d\n", len(allOpinions)))
 	historyMessage.WriteString(fmt.Sprintf("📄 For full message history: /export_%s", username))
 
@@ -749,7 +728,7 @@ func (t *TelegramService) handleTickerHistoryCommand(chatID int64, command strin
 }
 
 func (t *TelegramService) handleCacheCommand(chatID int64, command string) {
-	// Extract user identifier from command "/cache_username_or_id"
+
 	prefix := "/cache_"
 	if !strings.HasPrefix(command, prefix) {
 		t.SendMessage(chatID, "❌ Invalid command format. Use /cache_<username_or_id>")
@@ -762,37 +741,32 @@ func (t *TelegramService) handleCacheCommand(chatID int64, command string) {
 		return
 	}
 
-	// Try to find user by username first (case insensitive), then by ID
 	var user *UserModel
 	var err error
 
 	if user, err = t.dbService.GetUserByUsername(userIdentifier); err != nil {
-		// If not found by username, try by ID
+
 		if user, err = t.dbService.GetUser(userIdentifier); err != nil {
 			t.SendMessage(chatID, fmt.Sprintf("❌ User not found: %s\nTried both username and ID lookup.", userIdentifier))
 			return
 		}
 	}
 
-	// Get cached analysis for the user
 	cachedAnalysis, err := t.dbService.GetCachedAnalysis(user.ID)
 	if err != nil {
 		t.SendMessage(chatID, fmt.Sprintf("💾 <b>No Cached Analysis Found</b>\n\n👤 User: @%s (ID: %s)\n❌ No cached analysis available or cache has expired.", user.Username, user.ID))
 		return
 	}
 
-	// Format cached analysis information
 	var message strings.Builder
 	message.WriteString(fmt.Sprintf("💾 <b>Cached Analysis for @%s</b>\n\n", user.Username))
 
-	// User information
 	message.WriteString(fmt.Sprintf("👤 <b>User Details:</b>\n"))
 	message.WriteString(fmt.Sprintf("• Username: @%s\n", user.Username))
 	message.WriteString(fmt.Sprintf("• Name: %s\n", user.Name))
 	message.WriteString(fmt.Sprintf("• https://x.com/%s\n", user.Username))
 	message.WriteString(fmt.Sprintf("• User ID: <code>%s</code>\n\n", user.ID))
 
-	// Analysis results
 	message.WriteString(fmt.Sprintf("🔍 <b>Analysis Results:</b>\n"))
 
 	statusEmoji := "✅"
@@ -813,7 +787,6 @@ func (t *TelegramService) handleCacheCommand(chatID int64, command string) {
 
 	message.WriteString("\n")
 
-	// Key evidence
 	if len(cachedAnalysis.KeyEvidence) > 0 {
 		message.WriteString("🔍 <b>Key Evidence:</b>\n")
 		for i, evidence := range cachedAnalysis.KeyEvidence {
@@ -822,12 +795,10 @@ func (t *TelegramService) handleCacheCommand(chatID int64, command string) {
 		message.WriteString("\n")
 	}
 
-	// Decision reasoning
 	if cachedAnalysis.DecisionReason != "" {
 		message.WriteString(fmt.Sprintf("🧠 <b>Decision Reasoning:</b>\n<i>%s</i>\n\n", cachedAnalysis.DecisionReason))
 	}
 
-	// Cache metadata - get cache record for metadata
 	var cacheRecord CachedAnalysisModel
 	err = t.dbService.db.Where("user_id = ?", user.ID).First(&cacheRecord).Error
 	if err == nil {
@@ -835,7 +806,6 @@ func (t *TelegramService) handleCacheCommand(chatID int64, command string) {
 		message.WriteString(fmt.Sprintf("• 🕐 Analyzed At: %s\n", cacheRecord.AnalyzedAt.Format("2006-01-02 15:04:05 UTC")))
 		message.WriteString(fmt.Sprintf("• ⏰ Expires At: %s\n", cacheRecord.ExpiresAt.Format("2006-01-02 15:04:05 UTC")))
 
-		// Calculate time remaining
 		timeRemaining := time.Until(cacheRecord.ExpiresAt)
 		if timeRemaining > 0 {
 			hours := int(timeRemaining.Hours())
@@ -847,7 +817,6 @@ func (t *TelegramService) handleCacheCommand(chatID int64, command string) {
 		message.WriteString("\n")
 	}
 
-	// Related commands
 	message.WriteString("🔍 <b>Related Commands:</b>\n")
 	message.WriteString(fmt.Sprintf("• /history_%s - Message history\n", user.Username))
 	message.WriteString(fmt.Sprintf("• /ticker_history_%s - Ticker posts\n", user.Username))
@@ -858,7 +827,7 @@ func (t *TelegramService) handleCacheCommand(chatID int64, command string) {
 }
 
 func (t *TelegramService) exportTickerHistoryAsFile(chatID int64, username, ticker string, opinions []UserTickerOpinionModel) {
-	// Build file content
+
 	var fileContent strings.Builder
 	fileContent.WriteString(fmt.Sprintf("TICKER HISTORY EXPORT\n"))
 	fileContent.WriteString(fmt.Sprintf("User: @%s\n", username))
@@ -871,7 +840,6 @@ func (t *TelegramService) exportTickerHistoryAsFile(chatID int64, username, tick
 		fileContent.WriteString(fmt.Sprintf("[%d] %s\n", i+1, opinion.TweetCreatedAt.Format("2006-01-02 15:04:05 UTC")))
 		fileContent.WriteString(fmt.Sprintf("Tweet ID: %s\n", opinion.TweetID))
 
-		// Add reply context if available
 		if opinion.InReplyToID != "" {
 			fileContent.WriteString(fmt.Sprintf("Reply to: %s\n", opinion.InReplyToID))
 			if opinion.RepliedToAuthor != "" {
@@ -886,7 +854,6 @@ func (t *TelegramService) exportTickerHistoryAsFile(chatID int64, username, tick
 		fileContent.WriteString("\n" + strings.Repeat("-", 40) + "\n\n")
 	}
 
-	// Write to file
 	filename := fmt.Sprintf("%s_ticker_%s_%s.txt", username, ticker, time.Now().Format("20060102_150405"))
 	err := t.writeToFile(filename, fileContent.String())
 	if err != nil {
@@ -894,7 +861,6 @@ func (t *TelegramService) exportTickerHistoryAsFile(chatID int64, username, tick
 		return
 	}
 
-	// Send file to Telegram
 	caption := fmt.Sprintf("💰 <b>Ticker History Export</b>\n\n👤 User: @%s\n🏷️ Ticker: %s\n📊 Total Messages: %d\n📅 Generated: %s",
 		username,
 		ticker,
@@ -907,18 +873,16 @@ func (t *TelegramService) exportTickerHistoryAsFile(chatID int64, username, tick
 		return
 	}
 
-	// Clean up local file after successful send
 	go func() {
-		time.Sleep(10 * time.Second) // Wait a bit before cleanup
+		time.Sleep(10 * time.Second)
 		os.Remove(filename)
 	}()
 
-	// Send confirmation message
 	t.SendMessage(chatID, "✅ Ticker history file sent successfully!")
 }
 
 func (t *TelegramService) handleExportCommand(chatID int64, command string) {
-	// Extract username from command "/export_username"
+
 	prefix := "/export_"
 	if !strings.HasPrefix(command, prefix) {
 		t.SendMessage(chatID, "❌ Invalid command format. Use /export_username")
@@ -927,7 +891,6 @@ func (t *TelegramService) handleExportCommand(chatID int64, command string) {
 
 	username := strings.TrimPrefix(command, prefix)
 
-	// Get all messages for the user
 	tweets, err := t.dbService.GetAllUserMessagesByUsername(username)
 	if err != nil {
 		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving messages for @%s: %v", username, err))
@@ -939,7 +902,6 @@ func (t *TelegramService) handleExportCommand(chatID int64, command string) {
 		return
 	}
 
-	// Create text file content
 	var fileContent strings.Builder
 	fileContent.WriteString(fmt.Sprintf("FULL MESSAGE HISTORY FOR @%s\n", strings.ToUpper(username)))
 	fileContent.WriteString(fmt.Sprintf("Generated: %s\n", time.Now().Format("2006-01-02 15:04:05 UTC")))
@@ -961,7 +923,6 @@ func (t *TelegramService) handleExportCommand(chatID int64, command string) {
 		fileContent.WriteString("\n" + strings.Repeat("-", 40) + "\n\n")
 	}
 
-	// Write to file
 	filename := fmt.Sprintf("%s_messages_%s.txt", username, time.Now().Format("20060102_150405"))
 	err = t.writeToFile(filename, fileContent.String())
 	if err != nil {
@@ -969,7 +930,6 @@ func (t *TelegramService) handleExportCommand(chatID int64, command string) {
 		return
 	}
 
-	// Send file to Telegram
 	caption := fmt.Sprintf("📄 <b>Full Message Export</b>\n\n👤 User: @%s\n📊 Total Messages: %d\n📅 Generated: %s",
 		username,
 		len(tweets),
@@ -981,13 +941,11 @@ func (t *TelegramService) handleExportCommand(chatID int64, command string) {
 		return
 	}
 
-	// Clean up local file after successful send
 	go func() {
-		time.Sleep(10 * time.Second) // Wait a bit before cleanup
+		time.Sleep(10 * time.Second)
 		os.Remove(filename)
 	}()
 
-	// Send confirmation message
 	t.SendMessage(chatID, "✅ Export file sent successfully!")
 }
 
@@ -1015,11 +973,11 @@ func (t *TelegramService) handleSearchCommand(chatID int64, args []string) {
 	var searchTitle string
 
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-		// No query provided - show top 10 most active users
+
 		users, err = t.dbService.GetTopActiveUsers(10)
 		searchTitle = "🔥 <b>Top 10 Most Active Users</b>"
 	} else {
-		// Search by query
+
 		query := strings.Join(args, " ")
 		users, err = t.dbService.SearchUsers(query, 20)
 		searchTitle = fmt.Sprintf("🔍 <b>Search Results for '%s'</b> (Found %d)", query, len(users))
@@ -1038,7 +996,6 @@ func (t *TelegramService) handleSearchCommand(chatID int64, args []string) {
 		return
 	}
 
-	// Format search results
 	var searchResults strings.Builder
 	searchResults.WriteString(searchTitle + "\n\n")
 
@@ -1059,11 +1016,9 @@ func (t *TelegramService) handleSearchCommand(chatID int64, args []string) {
 		}
 		searchResults.WriteString(fmt.Sprintf("    ID: <code>%s</code>\n", user.ID))
 
-		// Add quick action commands
 		searchResults.WriteString(fmt.Sprintf("    Commands: /history_%s | /analyze_%s\n\n", user.Username, user.Username))
 	}
 
-	// Add note about commands
 	searchResults.WriteString("💡 <b>Quick Actions:</b>\n• Tap /history_username to view recent messages\n• Tap /analyze_username to run second step analysis")
 
 	t.SendMessage(chatID, searchResults.String())
@@ -1082,10 +1037,8 @@ func (t *TelegramService) handleAnalyzeCommand(chatID int64, command string) {
 		return
 	}
 
-	// Generate unique task ID
 	taskID := t.generateNotificationID()
 
-	// Send initial progress message
 	initialText := fmt.Sprintf("🔄 <b>Starting Analysis for @%s</b>\n\n📋 <b>Status:</b> Initializing...\n🆔 <b>Task ID:</b> <code>%s</code>\n\n⏳ Please wait, this may take a few minutes.", username, taskID)
 	messageID, err := t.SendMessageWithID(chatID, initialText)
 	if err != nil {
@@ -1093,7 +1046,6 @@ func (t *TelegramService) handleAnalyzeCommand(chatID int64, command string) {
 		return
 	}
 
-	// Create analysis task in database
 	task := &AnalysisTaskModel{
 		ID:             taskID,
 		Username:       username,
@@ -1111,10 +1063,8 @@ func (t *TelegramService) handleAnalyzeCommand(chatID int64, command string) {
 		return
 	}
 
-	// Start analysis in goroutine
 	go t.processAnalysisTask(taskID, chatID)
 
-	// Start progress monitor
 	go t.monitorAnalysisProgress(taskID)
 }
 
@@ -1168,7 +1118,6 @@ func (t *TelegramService) handleHelpCommand(chatID int64) {
 	t.SendMessage(chatID, fmt.Sprintf(helpMessage, chatID))
 }
 
-// processAnalysisTask processes the actual analysis work
 func (t *TelegramService) processAnalysisTask(taskID string, chatID int64) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1177,7 +1126,6 @@ func (t *TelegramService) processAnalysisTask(taskID string, chatID int64) {
 		}
 	}()
 
-	// Get task details
 	task, err := t.dbService.GetAnalysisTask(taskID)
 	if err != nil {
 		log.Printf("Failed to get analysis task %s: %v", taskID, err)
@@ -1186,7 +1134,6 @@ func (t *TelegramService) processAnalysisTask(taskID string, chatID int64) {
 
 	username := task.Username
 
-	// Step 1: User lookup
 	t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_USER_LOOKUP, "Looking up user information...")
 	user, err := t.dbService.GetUserByUsername(username)
 	var userID string
@@ -1195,12 +1142,11 @@ func (t *TelegramService) processAnalysisTask(taskID string, chatID int64) {
 		log.Printf("User %s not found in database, using placeholder ID", username)
 	} else {
 		userID = user.ID
-		// Update task with found user ID
+
 		task.UserID = userID
 		t.dbService.UpdateAnalysisTask(task)
 	}
 
-	// Step 2: Get user tweet for analysis context
 	t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_TICKER_SEARCH, "Searching for user's ticker mentions...")
 	tweet, err := t.dbService.GetUserTweetForAnalysis(username)
 
@@ -1286,24 +1232,21 @@ func (t *TelegramService) processAnalysisTask(taskID string, chatID int64) {
 		}
 	}
 
-	// Step 3: Send to analysis channel
 	t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_CLAUDE_ANALYSIS, "Sending for FUD analysis...")
 
 	select {
 	case t.analysisChannel <- newMessage:
-		// Successfully sent to analysis - now wait for neural network processing
+
 		t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_CLAUDE_ANALYSIS, "Processing with neural network...")
 
-		// Task completion will be handled by SecondStepHandler after Claude analysis
 		log.Printf("Manual analysis task %s sent to Claude processing pipeline", taskID)
 
 	default:
-		// Analysis channel is full
+
 		t.dbService.SetAnalysisTaskError(taskID, "Analysis channel is full, please try again later")
 	}
 }
 
-// monitorAnalysisProgress monitors task progress and updates Telegram message
 func (t *TelegramService) monitorAnalysisProgress(taskID string) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -1317,14 +1260,12 @@ func (t *TelegramService) monitorAnalysisProgress(taskID string) {
 				return
 			}
 
-			// Update progress message
 			progressText := t.formatAnalysisProgress(task)
 			err = t.EditMessage(task.TelegramChatID, task.MessageID, progressText)
 			if err != nil {
 				log.Printf("Failed to update progress message for task %s: %v", taskID, err)
 			}
 
-			// Stop monitoring if task is completed or failed
 			if task.Status == ANALYSIS_STATUS_COMPLETED || task.Status == ANALYSIS_STATUS_FAILED {
 				return
 			}
@@ -1332,7 +1273,6 @@ func (t *TelegramService) monitorAnalysisProgress(taskID string) {
 	}
 }
 
-// formatAnalysisProgress formats the progress message for Telegram
 func (t *TelegramService) formatAnalysisProgress(task *AnalysisTaskModel) string {
 	if task.Status == ANALYSIS_STATUS_FAILED {
 		return fmt.Sprintf(`❌ <b>Analysis Failed for @%s</b>
@@ -1358,7 +1298,6 @@ func (t *TelegramService) formatAnalysisProgress(task *AnalysisTaskModel) string
 			task.ID)
 	}
 
-	// Running status with progress steps
 	stepEmoji := "🔄"
 	stepText := task.ProgressText
 
@@ -1381,7 +1320,6 @@ func (t *TelegramService) formatAnalysisProgress(task *AnalysisTaskModel) string
 		stepEmoji = "💾"
 	}
 
-	// Calculate elapsed time
 	elapsed := time.Since(task.StartedAt)
 	elapsedStr := fmt.Sprintf("%.0fs", elapsed.Seconds())
 	if elapsed.Minutes() >= 1 {
@@ -1402,23 +1340,22 @@ func (t *TelegramService) formatAnalysisProgress(task *AnalysisTaskModel) string
 }
 
 func (t *TelegramService) handleFudListCommand(chatID int64, args []string, command string) {
-	// Parse page number from command or arguments
+
 	page := 1
 
-	// Check if page number is in command format /fudlist_X
 	if strings.HasPrefix(command, "/fudlist_") {
 		pageStr := strings.TrimPrefix(command, "/fudlist_")
 		if pageNum, err := strconv.Atoi(pageStr); err == nil && pageNum > 0 {
 			page = pageNum
 		}
 	} else if len(args) > 0 {
-		// Fallback to old format with arguments
+
 		if pageNum, err := strconv.Atoi(args[0]); err == nil && pageNum > 0 {
 			page = pageNum
 		}
 	}
 
-	const pageSize = 10 // Users per page
+	const pageSize = 10
 
 	fudUsers, err := t.dbService.GetAllFUDUsersFromCache()
 	if err != nil {
@@ -1448,7 +1385,6 @@ func (t *TelegramService) handleFudListCommand(chatID int64, args []string, comm
 	activeFUD := 0
 	cachedFUD := 0
 
-	// Show users for current page
 	for i := startIdx; i < endIdx; i++ {
 		user := fudUsers[i]
 		source := user["source"].(string)
@@ -1469,7 +1405,6 @@ func (t *TelegramService) handleFudListCommand(chatID int64, args []string, comm
 			sourceEmoji = "💾"
 		}
 
-		// Get last message info
 		lastMessageDate := user["last_message_date"].(time.Time)
 		isAlive := user["is_alive"].(bool)
 		status := user["status"].(string)
@@ -1493,7 +1428,6 @@ func (t *TelegramService) handleFudListCommand(chatID int64, args []string, comm
 			message.WriteString(fmt.Sprintf("    👤 Profile: %s\n", userSummary))
 		}
 
-		// Add enhanced command links
 		message.WriteString("    🔍 <b>Commands:</b>\n")
 		message.WriteString(fmt.Sprintf("      /export_%s - Message history\n", username))
 		message.WriteString(fmt.Sprintf("      /ticker_history_%s - Ticker posts\n", username))
@@ -1502,7 +1436,6 @@ func (t *TelegramService) handleFudListCommand(chatID int64, args []string, comm
 		message.WriteString("\n")
 	}
 
-	// Add pagination controls
 	if totalPages > 1 {
 		message.WriteString("📄 <b>Navigation:</b>\n")
 		if page > 1 {
@@ -1514,7 +1447,6 @@ func (t *TelegramService) handleFudListCommand(chatID int64, args []string, comm
 		message.WriteString("\n")
 	}
 
-	// Count all users for summary
 	totalActiveFUD := 0
 	totalCachedFUD := 0
 	for _, user := range fudUsers {
@@ -1526,7 +1458,6 @@ func (t *TelegramService) handleFudListCommand(chatID int64, args []string, comm
 		}
 	}
 
-	// Count alive and dead users
 	aliveCount := 0
 	deadCount := 0
 	for _, user := range fudUsers {
@@ -1559,14 +1490,12 @@ func (t *TelegramService) handleExportFudListCommand(chatID int64) {
 		return
 	}
 
-	// Collect usernames without @ symbol
 	var usernames []string
 	for _, user := range fudUsers {
 		username := user["username"].(string)
 		usernames = append(usernames, username)
 	}
 
-	// Join with commas
 	exportText := strings.Join(usernames, ", ")
 
 	message := fmt.Sprintf("📋 <b>FUD Users Export (%d total)</b>\n\n<code>%s</code>", len(fudUsers), exportText)
@@ -1578,10 +1507,8 @@ func (t *TelegramService) handleTopFudCommand(chatID int64, args []string, comma
 	log.Printf("🔍 TopFud command started - chatID: %d, command: %s", chatID, command)
 	t.SendMessage(chatID, "🔄 Starting TopFud analysis...")
 
-	// Parse page number from command or arguments
 	page := 1
 
-	// Check if page number is in command format /topfud_X
 	if strings.HasPrefix(command, "/topfud_") {
 		pageStr := strings.TrimPrefix(command, "/topfud_")
 		if pageNum, err := strconv.Atoi(pageStr); err == nil && pageNum > 0 {
@@ -1589,14 +1516,14 @@ func (t *TelegramService) handleTopFudCommand(chatID int64, args []string, comma
 		}
 		log.Printf("📄 Page number from command: %d", page)
 	} else if len(args) > 0 {
-		// Fallback to old format with arguments
+
 		if pageNum, err := strconv.Atoi(args[0]); err == nil && pageNum > 0 {
 			page = pageNum
 		}
 		log.Printf("📄 Page number from args: %d", page)
 	}
 
-	const pageSize = 10 // Users per page
+	const pageSize = 10
 
 	log.Printf("🔍 Calling GetActiveFUDUsersSortedByLastMessage...")
 	t.SendMessage(chatID, "🔍 Querying database for FUD users...")
@@ -1637,7 +1564,6 @@ func (t *TelegramService) handleTopFudCommand(chatID int64, args []string, comma
 	aliveCount := 0
 	deadCount := 0
 
-	// Show users for current page
 	for i := startIdx; i < endIdx; i++ {
 		user := fudUsers[i]
 
@@ -1666,12 +1592,10 @@ func (t *TelegramService) handleTopFudCommand(chatID int64, args []string, comma
 			message.WriteString("    💬 Last msg: unknown\n")
 		}
 
-		// Add enhanced command links
 		message.WriteString(fmt.Sprintf("      https://x.com/%s\n", username))
 		message.WriteString("\n")
 	}
 
-	// Add pagination controls
 	if totalPages > 1 {
 		message.WriteString("📄 <b>Navigation:</b>\n")
 		if page > 1 {
@@ -1711,14 +1635,13 @@ func (t *TelegramService) handleTasksCommand(chatID int64) {
 	var message strings.Builder
 	message.WriteString(fmt.Sprintf("🔄 <b>Running Analysis Tasks (%d total)</b>\n\n", len(tasks)))
 
-	// Limit to first 20 tasks to avoid message being too long
 	maxTasks := 20
 	if len(tasks) > maxTasks {
 		message.WriteString(fmt.Sprintf("📄 <i>Showing first %d tasks</i>\n\n", maxTasks))
 	}
 
 	for i, task := range tasks {
-		// Limit number of tasks to prevent message being too long
+
 		if i >= maxTasks {
 			message.WriteString(fmt.Sprintf("... and %d more tasks\n\n", len(tasks)-maxTasks))
 			break
@@ -1778,7 +1701,7 @@ func (t *TelegramService) handleTasksCommand(chatID int64) {
 }
 
 func (t *TelegramService) handleTop20AnalyzeCommand(chatID int64) {
-	// Get top 20 most active users
+
 	users, err := t.dbService.GetTopActiveUsers(20)
 	if err != nil {
 		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving top users: %v", err))
@@ -1790,25 +1713,21 @@ func (t *TelegramService) handleTop20AnalyzeCommand(chatID int64) {
 		return
 	}
 
-	// Send initial confirmation
 	t.SendMessage(chatID, fmt.Sprintf("🔄 <b>Starting Top 20 Analysis</b>\n\n📊 Found %d users to analyze\n⏳ This will take several minutes...\n\n💡 Use /tasks to monitor progress", len(users)))
 
-	// Start analysis for each user in background
 	analysisCount := 0
 	skippedCount := 0
 
 	for _, user := range users {
-		// Check if user already has recent cached analysis
+
 		if t.dbService.HasValidCachedAnalysis(user.ID) {
 			log.Printf("Skipping user %s - has valid cached analysis", user.Username)
 			skippedCount++
 			continue
 		}
 
-		// Generate task ID for tracking
 		taskID := t.generateNotificationID()
 
-		// Create analysis task in database
 		task := &AnalysisTaskModel{
 			ID:             taskID,
 			Username:       user.Username,
@@ -1817,7 +1736,7 @@ func (t *TelegramService) handleTop20AnalyzeCommand(chatID int64) {
 			CurrentStep:    ANALYSIS_STEP_INIT,
 			ProgressText:   "Queued for analysis...",
 			TelegramChatID: chatID,
-			MessageID:      0, // No progress messages for batch analysis
+			MessageID:      0,
 			StartedAt:      time.Now(),
 		}
 
@@ -1827,22 +1746,19 @@ func (t *TelegramService) handleTop20AnalyzeCommand(chatID int64) {
 			continue
 		}
 
-		// Start analysis in background
 		go t.processAnalysisTask(taskID, chatID)
 		analysisCount++
 
-		// Small delay between launches to avoid overwhelming the system
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	// Send summary
 	summaryMessage := fmt.Sprintf("🚀 <b>Top 20 Analysis Started</b>\n\n📊 <b>Statistics:</b>\n• ✅ Started: %d analyses\n• ⏭️ Skipped: %d (cached)\n• 📋 Total: %d users\n\n🔍 Use /tasks to monitor progress\n💡 Use /fudlist to see detected FUD users", analysisCount, skippedCount, len(users))
 	t.SendMessage(chatID, summaryMessage)
 
 	log.Printf("Started top 20 analysis: %d analyses queued, %d skipped", analysisCount, skippedCount)
 }
 func (t *TelegramService) handleTop100AnalyzeCommand(chatID int64) {
-	// Get top 20 most active users
+
 	users, err := t.dbService.GetTopActiveUsers(100)
 	if err != nil {
 		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving top users: %v", err))
@@ -1854,25 +1770,21 @@ func (t *TelegramService) handleTop100AnalyzeCommand(chatID int64) {
 		return
 	}
 
-	// Send initial confirmation
 	t.SendMessage(chatID, fmt.Sprintf("🔄 <b>Starting Top 100 Analysis</b>\n\n📊 Found %d users to analyze\n⏳ This will take several minutes...\n\n💡 Use /tasks to monitor progress", len(users)))
 
-	// Start analysis for each user in background
 	analysisCount := 0
 	skippedCount := 0
 
 	for _, user := range users {
-		// Check if user already has recent cached analysis
+
 		if t.dbService.HasValidCachedAnalysis(user.ID) {
 			log.Printf("Skipping user %s - has valid cached analysis", user.Username)
 			skippedCount++
 			continue
 		}
 
-		// Generate task ID for tracking
 		taskID := t.generateNotificationID()
 
-		// Create analysis task in database
 		task := &AnalysisTaskModel{
 			ID:             taskID,
 			Username:       user.Username,
@@ -1881,7 +1793,7 @@ func (t *TelegramService) handleTop100AnalyzeCommand(chatID int64) {
 			CurrentStep:    ANALYSIS_STEP_INIT,
 			ProgressText:   "Queued for analysis...",
 			TelegramChatID: chatID,
-			MessageID:      0, // No progress messages for batch analysis
+			MessageID:      0,
 			StartedAt:      time.Now(),
 		}
 
@@ -1891,15 +1803,12 @@ func (t *TelegramService) handleTop100AnalyzeCommand(chatID int64) {
 			continue
 		}
 
-		// Start analysis in background
 		go t.processAnalysisTask(taskID, chatID)
 		analysisCount++
 
-		// Small delay between launches to avoid overwhelming the system
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	// Send summary
 	summaryMessage := fmt.Sprintf("🚀 <b>Top 100 Analysis Started</b>\n\n📊 <b>Statistics:</b>\n• ✅ Started: %d analyses\n• ⏭️ Skipped: %d (cached)\n• 📋 Total: %d users\n\n🔍 Use /tasks to monitor progress\n💡 Use /fudlist to see detected FUD users", analysisCount, skippedCount, len(users))
 	t.SendMessage(chatID, summaryMessage)
 
@@ -1912,23 +1821,20 @@ func (t *TelegramService) handleBatchAnalyzeCommand(chatID int64, args []string)
 		return
 	}
 
-	// Join all arguments and split by comma
 	userListStr := strings.Join(args, " ")
 	usernames := strings.Split(userListStr, ",")
 
-	// Clean and validate usernames
 	var validUsernames []string
 	var invalidUsernames []string
 
 	for _, username := range usernames {
 		username = strings.TrimSpace(username)
-		username = strings.TrimPrefix(username, "@") // Remove @ if present
+		username = strings.TrimPrefix(username, "@")
 
 		if username == "" {
 			continue
 		}
 
-		// Basic validation - check if it looks like a valid username
 		if len(username) > 50 || strings.Contains(username, " ") {
 			invalidUsernames = append(invalidUsernames, username)
 			continue
@@ -1947,7 +1853,6 @@ func (t *TelegramService) handleBatchAnalyzeCommand(chatID int64, args []string)
 		return
 	}
 
-	// Send initial confirmation
 	var confirmationMessage strings.Builder
 	confirmationMessage.WriteString(fmt.Sprintf("🔄 <b>Starting Batch Analysis</b>\n\n📊 <b>Users to analyze (%d):</b>\n", len(validUsernames)))
 
@@ -1966,18 +1871,15 @@ func (t *TelegramService) handleBatchAnalyzeCommand(chatID int64, args []string)
 
 	t.SendMessage(chatID, confirmationMessage.String())
 
-	// Start analysis for each user
 	analysisCount := 0
 	skippedCount := 0
 
 	for _, username := range validUsernames {
-		// Check if user already has recent cached analysis
+
 		user, err := t.dbService.GetUserByUsername(username)
 
-		// Generate task ID for tracking
 		taskID := t.generateNotificationID()
 
-		// Create analysis task in database
 		task := &AnalysisTaskModel{
 			ID:             taskID,
 			Username:       username,
@@ -1985,7 +1887,7 @@ func (t *TelegramService) handleBatchAnalyzeCommand(chatID int64, args []string)
 			CurrentStep:    ANALYSIS_STEP_INIT,
 			ProgressText:   "Queued for batch analysis...",
 			TelegramChatID: chatID,
-			MessageID:      0, // No progress messages for batch analysis
+			MessageID:      0,
 			StartedAt:      time.Now(),
 		}
 
@@ -1999,22 +1901,18 @@ func (t *TelegramService) handleBatchAnalyzeCommand(chatID int64, args []string)
 			continue
 		}
 
-		// Start analysis in background with specific chat ID for notifications
 		go t.processBatchAnalysisTask(taskID, chatID)
 		analysisCount++
 
-		// Small delay between launches to avoid overwhelming the system
 		time.Sleep(150 * time.Millisecond)
 	}
 
-	// Send summary
 	summaryMessage := fmt.Sprintf("🚀 <b>Batch Analysis Started</b>\n\n📊 <b>Statistics:</b>\n• ✅ Started: %d analyses\n• ⏭️ Skipped: %d (cached)\n• 📋 Total: %d users\n\n🔔 Results will be sent to this chat as they complete\n🔍 Use /tasks to monitor progress", analysisCount, skippedCount, len(validUsernames))
 	t.SendMessage(chatID, summaryMessage)
 
 	log.Printf("Started batch analysis for chat %d: %d analyses queued, %d skipped", chatID, analysisCount, skippedCount)
 }
 
-// processBatchAnalysisTask processes analysis task for batch analysis with specific chat notifications
 func (t *TelegramService) processBatchAnalysisTask(taskID string, targetChatID int64) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -2023,7 +1921,6 @@ func (t *TelegramService) processBatchAnalysisTask(taskID string, targetChatID i
 		}
 	}()
 
-	// Get task details
 	task, err := t.dbService.GetAnalysisTask(taskID)
 	if err != nil {
 		log.Printf("Failed to get batch analysis task %s: %v", taskID, err)
@@ -2032,7 +1929,6 @@ func (t *TelegramService) processBatchAnalysisTask(taskID string, targetChatID i
 
 	username := task.Username
 
-	// Step 1: User lookup
 	t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_USER_LOOKUP, "Looking up user information...")
 	user, err := t.dbService.GetUserByUsername(username)
 	var userID string
@@ -2041,12 +1937,11 @@ func (t *TelegramService) processBatchAnalysisTask(taskID string, targetChatID i
 		log.Printf("User %s not found in database, using placeholder ID", username)
 	} else {
 		userID = user.ID
-		// Update task with found user ID
+
 		task.UserID = userID
 		t.dbService.UpdateAnalysisTask(task)
 	}
 
-	// Step 2: Get user tweet for analysis context
 	t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_TICKER_SEARCH, "Searching for user's ticker mentions...")
 	tweet, err := t.dbService.GetUserTweetForAnalysis(username)
 
@@ -2090,7 +1985,7 @@ func (t *TelegramService) processBatchAnalysisTask(taskID string, targetChatID i
 			IsManualAnalysis:  true,
 			ForceNotification: true,
 			TaskID:            taskID,
-			TelegramChatID:    targetChatID, // Set specific chat for notifications
+			TelegramChatID:    targetChatID,
 		}
 	} else {
 		newMessage = twitterapi.NewMessage{
@@ -2128,20 +2023,18 @@ func (t *TelegramService) processBatchAnalysisTask(taskID string, targetChatID i
 			IsManualAnalysis:  true,
 			ForceNotification: true,
 			TaskID:            taskID,
-			TelegramChatID:    targetChatID, // Set specific chat for notifications
+			TelegramChatID:    targetChatID,
 		}
 	}
 
-	// Send to analysis channel for processing
 	t.dbService.UpdateAnalysisTaskProgress(taskID, ANALYSIS_STEP_CLAUDE_ANALYSIS, "Starting AI analysis...")
 	t.analysisChannel <- newMessage
 
 	log.Printf("Sent batch analysis request for user %s (task %s) to analysis channel", username, taskID)
 }
 
-// sendCachedBatchNotification sends cached result as notification to specific chat
 func (t *TelegramService) sendCachedBatchNotification(username, userID string, cachedResult SecondStepClaudeResponse, targetChatID int64) {
-	// Create a formatted message for cached result
+
 	alertType := cachedResult.FUDType
 	if !cachedResult.IsFUDUser {
 		alertType = "clean_user"
@@ -2187,16 +2080,13 @@ func (t *TelegramService) sendCachedBatchNotification(username, userID string, c
 	}
 }
 
-// handleAnalyzeAllCommand analyzes all users with messages, sorted by message count (descending)
 func (t *TelegramService) handleAnalyzeAllCommand(chatID int64) {
-	// Send initial confirmation
+
 	t.SendMessage(chatID, "🔄 <b>Starting Full Database Analysis</b>\n\n📊 Getting list of all users with messages...\nThis may take a moment.")
 
-	// Start analysis in background
 	go t.processAnalyzeAllUsers(chatID)
 }
 
-// processAnalyzeAllUsers processes analysis for all users with progress tracking
 func (t *TelegramService) processAnalyzeAllUsers(chatID int64) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -2205,8 +2095,7 @@ func (t *TelegramService) processAnalyzeAllUsers(chatID int64) {
 		}
 	}()
 
-	// Get all users sorted by message count (descending)
-	users, err := t.dbService.GetTopActiveUsers(0) // 0 = no limit, get all users
+	users, err := t.dbService.GetTopActiveUsers(0)
 	if err != nil {
 		t.SendMessage(chatID, fmt.Sprintf("❌ Error getting users list: %v", err))
 		return
@@ -2217,7 +2106,6 @@ func (t *TelegramService) processAnalyzeAllUsers(chatID int64) {
 		return
 	}
 
-	// Filter out users who already have cached analysis (< 24h)
 	var usersToAnalyze []UserModel
 	var skippedCount int
 
@@ -2232,7 +2120,6 @@ func (t *TelegramService) processAnalyzeAllUsers(chatID int64) {
 	totalUsers := len(users)
 	toAnalyzeCount := len(usersToAnalyze)
 
-	// Send status update
 	statusMessage := fmt.Sprintf(`📊 <b>Analysis Preparation Complete</b>
 
 👥 <b>Total users with messages:</b> %d
@@ -2252,21 +2139,18 @@ func (t *TelegramService) processAnalyzeAllUsers(chatID int64) {
 		return
 	}
 
-	// Start progress monitoring goroutine
 	progressCtx := make(chan bool, 1)
 	go t.monitorAnalysisAllProgress(chatID, statusMsg.Result.MessageID, toAnalyzeCount, progressCtx)
 
-	// Process users in chunks, feeding to existing analysis channel
 	sentCount := 0
 	for i, user := range usersToAnalyze {
-		// Create analysis task
+
 		taskID, err := t.generateTaskID()
 		if err != nil {
 			log.Printf("Failed to generate task ID for user %s: %v", user.Username, err)
 			continue
 		}
 
-		// Create task in database
 		task := &AnalysisTaskModel{
 			ID:             taskID,
 			Username:       user.Username,
@@ -2285,7 +2169,6 @@ func (t *TelegramService) processAnalyzeAllUsers(chatID int64) {
 			continue
 		}
 
-		// Send to existing analysis channel (will block if buffer is full - channel has buffer of 30)
 		newMessage := twitterapi.NewMessage{
 			Author: struct {
 				UserName string
@@ -2296,7 +2179,7 @@ func (t *TelegramService) processAnalyzeAllUsers(chatID int64) {
 				Name:     user.Name,
 				ID:       user.ID,
 			},
-			TweetID:          "", // Not a specific tweet analysis
+			TweetID:          "",
 			IsManualAnalysis: true,
 			TaskID:           taskID,
 			TelegramChatID:   chatID,
@@ -2307,21 +2190,17 @@ func (t *TelegramService) processAnalyzeAllUsers(chatID int64) {
 
 		log.Printf("Sent user %s (%d/%d) to main analysis channel", user.Username, i+1, toAnalyzeCount)
 
-		// Small delay to control flow and prevent overwhelming
 		time.Sleep(300 * time.Millisecond)
 	}
 
-	// Stop progress monitoring
 	progressCtx <- true
 
-	// Send final status
 	finalMessage := fmt.Sprintf("✅ <b>Analysis Complete</b>\n\n📊 <b>Final Statistics:</b>\n• 🚀 Sent for analysis: %d\n• 💾 Cached (skipped): %d\n• 📋 Total processed: %d\n\n🔔 All results have been sent to this chat", sentCount, skippedCount, totalUsers)
 	t.SendMessage(chatID, finalMessage)
 
 	log.Printf("Completed full database analysis: %d sent, %d skipped, %d total", sentCount, skippedCount, totalUsers)
 }
 
-// monitorAnalysisProgress monitors and reports analysis progress
 func (t *TelegramService) monitorAnalysisAllProgress(chatID int64, messageID int64, totalUsers int, ctx chan bool) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -2329,17 +2208,16 @@ func (t *TelegramService) monitorAnalysisAllProgress(chatID int64, messageID int
 	for {
 		select {
 		case <-ctx:
-			// Analysis complete
+
 			return
 		case <-ticker.C:
-			// Get current task statistics
+
 			stats, err := t.getAnalysisStatistics()
 			if err != nil {
 				log.Printf("Failed to get analysis statistics: %v", err)
 				continue
 			}
 
-			// Update status message
 			statusMessage := fmt.Sprintf(`🔄 <b>Full Database Analysis Progress</b>
 
 👥 <b>Total users to analyze:</b> %d
@@ -2366,11 +2244,9 @@ func (t *TelegramService) monitorAnalysisAllProgress(chatID int64, messageID int
 	}
 }
 
-// getAnalysisStatistics returns current analysis task statistics
 func (t *TelegramService) getAnalysisStatistics() (map[string]int, error) {
 	stats := make(map[string]int)
 
-	// Get counts for each status
 	var pending, running, completed, failed int64
 
 	t.dbService.db.Model(&AnalysisTaskModel{}).Where("status = ?", ANALYSIS_STATUS_PENDING).Count(&pending)
@@ -2392,33 +2268,28 @@ func (t *TelegramService) removeChatId(chatId int64) {
 	delete(t.chatIDs, chatId)
 }
 
-// parseCurlCommand parses a curl command and extracts authentication headers
 func (t *TelegramService) parseCurlCommand(curlCommand string) (string, string, string, error) {
-	// Clean up the command
+
 	curlCommand = strings.TrimSpace(curlCommand)
 
-	// Regular expressions to extract headers
 	authRegex := regexp.MustCompile(`-H\s+['"]Authorization:\s*([^'"]+)['"]`)
 	csrfRegex := regexp.MustCompile(`-H\s+['"]x-csrf-token:\s*([^'"]+)['"]`)
 	cookieRegex := regexp.MustCompile(`-H\s+['"]Cookie:\s*([^'"]+)['"]`)
 
 	var authorization, csrfToken, cookie string
 
-	// Extract Authorization header
 	if matches := authRegex.FindStringSubmatch(curlCommand); len(matches) > 1 {
 		authorization = matches[1]
 	} else {
 		return "", "", "", fmt.Errorf("Authorization header not found in curl command")
 	}
 
-	// Extract CSRF token
 	if matches := csrfRegex.FindStringSubmatch(curlCommand); len(matches) > 1 {
 		csrfToken = matches[1]
 	} else {
 		return "", "", "", fmt.Errorf("x-csrf-token header not found in curl command")
 	}
 
-	// Extract Cookie header
 	if matches := cookieRegex.FindStringSubmatch(curlCommand); len(matches) > 1 {
 		cookie = matches[1]
 	} else {
@@ -2428,51 +2299,42 @@ func (t *TelegramService) parseCurlCommand(curlCommand string) (string, string, 
 	return authorization, csrfToken, cookie, nil
 }
 
-// handleUpdateReverseAuthCommand handles the /update_reverse_auth command
 func (t *TelegramService) handleUpdateReverseAuthCommand(chatID int64, curlCommand string) {
 	if curlCommand == "" {
 		t.SendMessage(chatID, "❌ Usage: /update_reverse_auth <curl_command>\n\nExample:\n/update_reverse_auth curl -H 'Authorization: Bearer xyz' -H 'x-csrf-token: abc' -H 'Cookie: session=123' ...")
 		return
 	}
 
-	// Send initial message
 	t.SendMessage(chatID, "🔄 Parsing curl command and updating reverse API authentication...")
 
-	// Parse curl command
 	authorization, csrfToken, cookie, err := t.parseCurlCommand(curlCommand)
 	if err != nil {
 		t.SendMessage(chatID, fmt.Sprintf("❌ Failed to parse curl command: %v", err))
 		return
 	}
 
-	// Store current values for rollback
 	oldAuth := os.Getenv(ENV_TWITTER_REVERSE_AUTHORIZATION)
 	oldCsrf := os.Getenv(ENV_TWITTER_REVERSE_CSRF_TOKEN)
 	oldCookie := os.Getenv(ENV_TWITTER_REVERSE_COOKIE)
 
-	// Temporarily update environment variables
 	os.Setenv(ENV_TWITTER_REVERSE_AUTHORIZATION, authorization)
 	os.Setenv(ENV_TWITTER_REVERSE_CSRF_TOKEN, csrfToken)
 	os.Setenv(ENV_TWITTER_REVERSE_COOKIE, cookie)
 
-	// Create new auth struct
 	auth := &twitterapi_reverse.TwitterAuth{
 		Authorization: authorization,
 		XCSRFToken:    csrfToken,
 		Cookie:        cookie,
 	}
 
-	// Test the new authentication
 	t.SendMessage(chatID, "🧪 Testing reverse API with new credentials...")
 
-	// Create reverse service and test
 	reverseService := twitterapi_reverse.NewTwitterReverseService(auth, os.Getenv(ENV_PROXY_DSN), false)
 
-	// Test with community tweets
 	communityID := os.Getenv(ENV_DEMO_COMMUNITY_ID)
 	tweets, err := reverseService.GetCommunityTweets(communityID, 10)
 	if err != nil {
-		// Rollback on error
+
 		os.Setenv(ENV_TWITTER_REVERSE_AUTHORIZATION, oldAuth)
 		os.Setenv(ENV_TWITTER_REVERSE_CSRF_TOKEN, oldCsrf)
 		os.Setenv(ENV_TWITTER_REVERSE_COOKIE, oldCookie)
@@ -2481,14 +2343,12 @@ func (t *TelegramService) handleUpdateReverseAuthCommand(chatID int64, curlComma
 		return
 	}
 
-	// Success - update .env file
 	err = t.updateEnvFile(authorization, csrfToken, cookie)
 	if err != nil {
 		t.SendMessage(chatID, fmt.Sprintf("⚠️ Authentication works but failed to update .env file: %v", err))
 		return
 	}
 
-	// Prepare response with tweet info
 	var lastTweetText string
 	if len(tweets) > 0 {
 		lastTweet := tweets[len(tweets)-1]
@@ -2499,7 +2359,6 @@ func (t *TelegramService) handleUpdateReverseAuthCommand(chatID int64, curlComma
 		}
 	}
 
-	// Send success message
 	successMessage := fmt.Sprintf(`✅ <b>Reverse API authentication updated successfully!</b>
 
 📊 <b>Test Results:</b>
@@ -2521,11 +2380,9 @@ func (t *TelegramService) handleUpdateReverseAuthCommand(chatID int64, curlComma
 	t.SendMessage(chatID, successMessage)
 }
 
-// updateEnvFile updates the .env file with new reverse API credentials
 func (t *TelegramService) updateEnvFile(authorization, csrfToken, cookie string) error {
 	envPath := ".dev.env"
 
-	// Read current .env file
 	content, err := os.ReadFile(envPath)
 	if err != nil {
 		return fmt.Errorf("failed to read .env file: %v", err)
@@ -2533,12 +2390,10 @@ func (t *TelegramService) updateEnvFile(authorization, csrfToken, cookie string)
 
 	envContent := string(content)
 
-	// Update each field
 	envContent = t.updateEnvLine(envContent, "twitter_reverse_authorization", authorization)
 	envContent = t.updateEnvLine(envContent, "twitter_reverse_csrf_token", csrfToken)
 	envContent = t.updateEnvLine(envContent, "twitter_reverse_cookie", cookie)
 
-	// Write back to file
 	err = os.WriteFile(envPath, []byte(envContent), 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write .env file: %v", err)
@@ -2547,11 +2402,9 @@ func (t *TelegramService) updateEnvFile(authorization, csrfToken, cookie string)
 	return nil
 }
 
-// updateEnvLine updates a specific line in the .env content
 func (t *TelegramService) updateEnvLine(content, key, value string) string {
 	lines := strings.Split(content, "\n")
 
-	// Find and update the line
 	for i, line := range lines {
 		if strings.HasPrefix(line, key+"=") {
 			lines[i] = fmt.Sprintf("%s=%s", key, value)
@@ -2562,7 +2415,6 @@ func (t *TelegramService) updateEnvLine(content, key, value string) string {
 	return strings.Join(lines, "\n")
 }
 
-// Helper function for min
 func min(a, b int) int {
 	if a < b {
 		return a

@@ -21,8 +21,8 @@ type FUDAlertNotification struct {
 	RecommendedAction string   `json:"recommended_action"`
 	KeyEvidence       []string `json:"key_evidence"`
 	DecisionReason    string   `json:"decision_reason"`
-	UserSummary       string   `json:"user_summary"` // Short conclusion about user type
-	// Thread context fields
+	UserSummary       string   `json:"user_summary"`
+
 	OriginalPostText      string `json:"original_post_text"`
 	OriginalPostAuthor    string `json:"original_post_author"`
 	ParentPostText        string `json:"parent_post_text"`
@@ -30,8 +30,8 @@ type FUDAlertNotification struct {
 	GrandParentPostText   string `json:"grandparent_post_text"`
 	GrandParentPostAuthor string `json:"grandparent_post_author"`
 	HasThreadContext      bool   `json:"has_thread_context"`
-	// Target chat for notification (optional)
-	TargetChatID int64 `json:"target_chat_id,omitempty"` // If set, send only to this chat
+
+	TargetChatID int64 `json:"target_chat_id,omitempty"`
 }
 
 func NewNotificationFormatter() *NotificationFormatter {
@@ -42,11 +42,10 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 	severityEmoji := nf.getSeverityEmoji(alert.AlertSeverity)
 	typeEmoji := nf.getFUDTypeEmoji(alert.FUDType)
 
-	// Build context section if available
 	contextSection := ""
 	if alert.HasThreadContext {
 		if alert.GrandParentPostText != "" {
-			// Show grandparent -> parent -> current structure
+
 			contextSection = fmt.Sprintf(`
 
 📄 <b>Thread Context:</b>
@@ -57,7 +56,7 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 				nf.truncateText(alert.ParentPostText, 150),
 				alert.ParentPostAuthor)
 		} else if alert.OriginalPostText != "" || alert.ParentPostText != "" {
-			// Show parent -> current structure
+
 			postText := alert.OriginalPostText
 			postAuthor := alert.OriginalPostAuthor
 			if postText == "" {
@@ -73,7 +72,6 @@ func (nf *NotificationFormatter) FormatForTelegram(alert FUDAlertNotification) s
 		}
 	}
 
-	// Determine if this is a FUD alert or clean analysis
 	isFUDAlert := !strings.Contains(alert.FUDType, "manual_analysis_clean") && alert.FUDType != "none"
 
 	var alertTitle, typeSection string
@@ -126,7 +124,6 @@ func (nf *NotificationFormatter) FormatForTelegramWithDetail(alert FUDAlertNotif
 	severityEmoji := nf.getSeverityEmoji(alert.AlertSeverity)
 	typeEmoji := nf.getFUDTypeEmoji(alert.FUDType)
 
-	// Determine if this is a FUD alert or clean analysis
 	isFUDAlert := !strings.Contains(alert.FUDType, "manual_analysis_clean") && alert.FUDType != "none"
 
 	var alertTitle, typeSection string
@@ -182,7 +179,6 @@ func (nf *NotificationFormatter) FormatDetailedView(alert FUDAlertNotification) 
 	severityEmoji := nf.getSeverityEmoji(alert.AlertSeverity)
 	typeEmoji := nf.getFUDTypeEmoji(alert.FUDType)
 
-	// Format key evidence
 	var evidenceList string
 	for i, evidence := range alert.KeyEvidence {
 		evidenceList += fmt.Sprintf("  %d. %s\n", i+1, evidence)
@@ -191,11 +187,10 @@ func (nf *NotificationFormatter) FormatDetailedView(alert FUDAlertNotification) 
 		evidenceList = "  No specific evidence provided\n"
 	}
 
-	// Build thread context section for detailed view
 	threadContextSection := ""
 	if alert.HasThreadContext {
 		if alert.GrandParentPostText != "" {
-			// Show full thread: grandparent -> parent -> current
+
 			threadContextSection = fmt.Sprintf(`
 
 📄 <b>FULL THREAD CONTEXT</b>
@@ -209,7 +204,7 @@ func (nf *NotificationFormatter) FormatDetailedView(alert FUDAlertNotification) 
 				alert.ParentPostAuthor,
 				alert.ParentPostText)
 		} else if alert.OriginalPostText != "" || alert.ParentPostText != "" {
-			// Show single parent context
+
 			postText := alert.OriginalPostText
 			postAuthor := alert.OriginalPostAuthor
 			if postText == "" {
@@ -226,7 +221,6 @@ func (nf *NotificationFormatter) FormatDetailedView(alert FUDAlertNotification) 
 		}
 	}
 
-	// Determine if this is a FUD alert or clean analysis
 	isFUDAlert := !strings.Contains(alert.FUDType, "manual_analysis_clean") && alert.FUDType != "none"
 
 	var analysisTitle, classificationSection string
@@ -365,7 +359,7 @@ func (nf *NotificationFormatter) getFUDTypeEmoji(fudType string) string {
 }
 
 func (nf *NotificationFormatter) formatFUDType(fudType string) string {
-	// Convert snake_case to Title Case
+
 	words := strings.Split(fudType, "_")
 	for i, word := range words {
 		words[i] = strings.Title(word)

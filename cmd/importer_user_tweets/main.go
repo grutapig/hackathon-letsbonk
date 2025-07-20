@@ -15,19 +15,16 @@ func main() {
 	err := godotenv.Load()
 	panicErr(err)
 
-	// Get target users from env
 	targetUsersEnv := os.Getenv("target_users")
 	if targetUsersEnv == "" {
 		panic("target_users environment variable is required")
 	}
 
-	// Get ticker from env
 	ticker := os.Getenv("twitter_community_ticker")
 	if ticker == "" {
 		panic("twitter_community_ticker environment variable is required")
 	}
 
-	// Parse users list
 	usernames := strings.Split(targetUsersEnv, ",")
 	for i, username := range usernames {
 		usernames[i] = strings.TrimSpace(username)
@@ -38,7 +35,6 @@ func main() {
 
 	api := twitterapi.NewTwitterAPIService(os.Getenv("twitter_api_key"), os.Getenv("twitter_api_base_url"), os.Getenv("proxy_dsn"))
 
-	// Create CSV file
 	filename := fmt.Sprintf("user_tweets_%s_%s.csv", ticker, time.Now().Format("20060102_150405"))
 	file, err := os.Create(filename)
 	panicErr(err)
@@ -47,7 +43,6 @@ func main() {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	// Write CSV headers
 	headers := []string{
 		"username",
 		"user_id",
@@ -65,13 +60,11 @@ func main() {
 	panicErr(err)
 	writer.Flush()
 
-	// Create channels for parallel processing
 	userCh := make(chan string, len(usernames))
 	resultCh := make(chan UserSearchResult, len(usernames)*10)
 
-	// Start workers
 	var wg sync.WaitGroup
-	numWorkers := 5 // Limit concurrent requests
+	numWorkers := 5
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go func() {
@@ -80,7 +73,6 @@ func main() {
 		}()
 	}
 
-	// Start result processor
 	var processorWg sync.WaitGroup
 	processorWg.Add(1)
 	go func() {
@@ -88,18 +80,15 @@ func main() {
 		processResults(writer, resultCh)
 	}()
 
-	// Send users to workers
 	startTime := time.Now()
 	for _, username := range usernames {
 		userCh <- username
 	}
 	close(userCh)
 
-	// Wait for workers to finish
 	wg.Wait()
 	close(resultCh)
 
-	// Wait for result processor to finish
 	processorWg.Wait()
 
 	totalDuration := time.Since(startTime)
@@ -154,13 +143,11 @@ func searchUserTweets(api *twitterapi.TwitterAPIService, username, ticker string
 
 		pageCount++
 
-		// Check if there are more pages
 		if !response.HasNextPage || response.NextCursor == "" {
 			break
 		}
 		cursor = response.NextCursor
 
-		// Small delay to avoid rate limiting
 		time.Sleep(100 * time.Millisecond)
 	}
 

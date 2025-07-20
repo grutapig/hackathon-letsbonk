@@ -15,7 +15,7 @@ func TestParseTweetsFromCommunityResponse(t *testing.T) {
 	result, err := ParseCommunityTweets(data)
 	if err != nil {
 		fmt.Printf("Parser errors: %v\n", err)
-		// Don't fail the test immediately if we got some results
+
 		if len(result) == 0 {
 			t.Fatalf("No tweets parsed and got error: %v", err)
 		}
@@ -44,7 +44,7 @@ func TestParseTweetsFromThreadedConversationResponse(t *testing.T) {
 	result, err := ParseThreadedConversationTweets(data)
 	if err != nil {
 		fmt.Printf("Parser errors: %v\n", err)
-		// Don't fail the test immediately if we got some results
+
 		if len(result) == 0 {
 			t.Fatalf("No tweets parsed and got error: %v", err)
 		}

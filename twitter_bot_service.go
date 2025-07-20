@@ -40,7 +40,6 @@ func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, claudeAPI *C
 func (s *TwitterBotService) ProcessMentionTweet(message twitterapi.NewMessage) {
 	log.Printf("Processing mention tweet from @%s: %s", message.Author.UserName, message.Text)
 
-	// First Claude request to analyze the message
 	analysisPrompt := fmt.Sprintf("Analyze this tweet for questions or requests: %s", message.Text)
 
 	claudeMessages := ClaudeMessages{
@@ -58,14 +57,12 @@ func (s *TwitterBotService) ProcessMentionTweet(message twitterapi.NewMessage) {
 
 	log.Printf("Analysis response: %s", analysisResponse.Content[0].Text)
 
-	// Check if user is in FUD database
 	var fudUser *FUDUserModel
 	fudUser, err = s.databaseService.GetFUDUser(message.Author.ID)
 	if err != nil {
 		log.Printf("User not found in FUD database: %v", err)
 	}
 
-	// Prepare context for response generation
 	contextInfo := ""
 	if fudUser != nil {
 		contextInfo = fmt.Sprintf("User @%s is marked as FUD user with type: %s", message.Author.UserName, fudUser.FUDType)
@@ -73,7 +70,6 @@ func (s *TwitterBotService) ProcessMentionTweet(message twitterapi.NewMessage) {
 		contextInfo = fmt.Sprintf("User @%s is not in FUD database", message.Author.UserName)
 	}
 
-	// Second Claude request for response generation
 	responsePrompt := fmt.Sprintf(`Generate a response to this tweet. Context: %s
 	
 Tweet analysis: %s
@@ -96,14 +92,12 @@ Respond in 180 characters or less. Do not use JSON format, just plain text.`, co
 
 	responseText := responseResult.Content[0].Text
 
-	// Limit response to 180 characters
 	if len(responseText) > 180 {
 		responseText = responseText[:180]
 	}
 
 	log.Printf("Generated response: %s", responseText)
 
-	// Post reply tweet
 	err = s.PostReplyTweet(responseText, message.TweetID)
 	if err != nil {
 		log.Printf("Failed to post reply tweet: %v", err)
@@ -136,23 +130,20 @@ func (s *TwitterBotService) ContainsBotTag(text string) bool {
 func (s *TwitterBotService) StartMentionListener(newMessageCh chan twitterapi.NewMessage) {
 	log.Printf("Starting mention listener for bot tag: %s", s.botTag)
 
-	// Track processed tweets to avoid duplicates
 	processedTweets := make(map[string]bool)
 
 	for message := range newMessageCh {
-		// Skip if already processed
+
 		if processedTweets[message.TweetID] {
 			continue
 		}
 
-		// Check if tweet contains bot tag
 		if s.ContainsBotTag(message.Text) {
 			log.Printf("Found mention in tweet %s from @%s", message.TweetID, message.Author.UserName)
 			go s.ProcessMentionTweet(message)
 			processedTweets[message.TweetID] = true
 		}
 
-		// Clean up old processed tweets to prevent memory growth
 		if len(processedTweets) > 1000 {
 			for tweetID := range processedTweets {
 				delete(processedTweets, tweetID)

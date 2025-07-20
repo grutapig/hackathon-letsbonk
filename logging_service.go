@@ -15,7 +15,6 @@ type LoggingService struct {
 	db *gorm.DB
 }
 
-// NewLoggingService creates a new logging service instance
 func NewLoggingService(dbPath string) (*LoggingService, error) {
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
@@ -28,7 +27,6 @@ func NewLoggingService(dbPath string) (*LoggingService, error) {
 		db: db,
 	}
 
-	// Run migrations
 	if err := service.runMigrations(); err != nil {
 		return nil, fmt.Errorf("failed to run logging migrations: %w", err)
 	}
@@ -36,7 +34,6 @@ func NewLoggingService(dbPath string) (*LoggingService, error) {
 	return service, nil
 }
 
-// runMigrations runs database migrations for logging tables
 func (s *LoggingService) runMigrations() error {
 	return s.db.AutoMigrate(
 		&MessageLogModel{},
@@ -47,9 +44,6 @@ func (s *LoggingService) runMigrations() error {
 	)
 }
 
-// Message Logging Methods
-
-// LogMessage logs a new message from monitoring
 func (s *LoggingService) LogMessage(tweetID, userID, username, text, sourceType string, tweetCreatedAt time.Time) error {
 	messageLog := MessageLogModel{
 		TweetID:        tweetID,
@@ -63,7 +57,6 @@ func (s *LoggingService) LogMessage(tweetID, userID, username, text, sourceType 
 	return s.db.Create(&messageLog).Error
 }
 
-// GetMessageCountByHour returns message count for a specific hour
 func (s *LoggingService) GetMessageCountByHour(date time.Time) (int64, error) {
 	var count int64
 	startOfHour := time.Date(date.Year(), date.Month(), date.Day(), date.Hour(), 0, 0, 0, date.Location())
@@ -76,7 +69,6 @@ func (s *LoggingService) GetMessageCountByHour(date time.Time) (int64, error) {
 	return count, err
 }
 
-// GetMessageCountByDay returns message count for a specific day
 func (s *LoggingService) GetMessageCountByDay(date time.Time) (int64, error) {
 	var count int64
 	startOfDay := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
@@ -89,7 +81,6 @@ func (s *LoggingService) GetMessageCountByDay(date time.Time) (int64, error) {
 	return count, err
 }
 
-// GetMessageCountByDateRange returns message count for a date range
 func (s *LoggingService) GetMessageCountByDateRange(startDate, endDate time.Time) (int64, error) {
 	var count int64
 	err := s.db.Model(&MessageLogModel{}).
@@ -99,7 +90,6 @@ func (s *LoggingService) GetMessageCountByDateRange(startDate, endDate time.Time
 	return count, err
 }
 
-// GetHourlyMessageStats returns hourly message statistics for last 24 hours
 func (s *LoggingService) GetHourlyMessageStats() ([]map[string]interface{}, error) {
 	var results []map[string]interface{}
 	now := time.Now()
@@ -120,7 +110,6 @@ func (s *LoggingService) GetHourlyMessageStats() ([]map[string]interface{}, erro
 	return results, nil
 }
 
-// GetDailyMessageStats returns daily message statistics for last 30 days
 func (s *LoggingService) GetDailyMessageStats() ([]map[string]interface{}, error) {
 	var results []map[string]interface{}
 	now := time.Now()
@@ -141,9 +130,6 @@ func (s *LoggingService) GetDailyMessageStats() ([]map[string]interface{}, error
 	return results, nil
 }
 
-// User Activity Logging Methods
-
-// LogUserActivity logs user activity (new or existing user)
 func (s *LoggingService) LogUserActivity(userID, username, activityType, messageID, sourceType string) error {
 	userActivity := UserActivityLogModel{
 		UserID:       userID,
@@ -156,21 +142,19 @@ func (s *LoggingService) LogUserActivity(userID, username, activityType, message
 		LastSeenAt:   time.Now(),
 	}
 
-	// Try to update existing record for today, otherwise create new
 	var existing UserActivityLogModel
 	err := s.db.Where("user_id = ? AND activity_date = ?", userID, userActivity.ActivityDate).First(&existing).Error
 	if err == nil {
-		// Update existing record
+
 		existing.LastSeenAt = time.Now()
-		existing.ActivityType = activityType // Update activity type in case it changed
+		existing.ActivityType = activityType
 		return s.db.Save(&existing).Error
 	} else {
-		// Create new record
+
 		return s.db.Create(&userActivity).Error
 	}
 }
 
-// GetUserActivityByDay returns user activity stats for a specific day
 func (s *LoggingService) GetUserActivityByDay(date time.Time) (map[string]interface{}, error) {
 	targetDate := date.Truncate(24 * time.Hour)
 
@@ -199,7 +183,6 @@ func (s *LoggingService) GetUserActivityByDay(date time.Time) (map[string]interf
 	}, nil
 }
 
-// GetDailyUserActivityStats returns daily user activity stats for last 30 days
 func (s *LoggingService) GetDailyUserActivityStats() ([]map[string]interface{}, error) {
 	var results []map[string]interface{}
 	now := time.Now()
@@ -216,9 +199,6 @@ func (s *LoggingService) GetDailyUserActivityStats() ([]map[string]interface{}, 
 	return results, nil
 }
 
-// AI Request Logging Methods
-
-// LogAIRequest logs an AI request and response
 func (s *LoggingService) LogAIRequest(requestUUID, userID, username, tweetID, requestType string, stepNumber int, requestData, responseData interface{}, tokensUsed, processingTime int, isSuccess bool, errorMessage string) error {
 	requestJSON, _ := json.Marshal(requestData)
 	responseJSON, _ := json.Marshal(responseData)
@@ -242,14 +222,12 @@ func (s *LoggingService) LogAIRequest(requestUUID, userID, username, tweetID, re
 	return s.db.Create(&aiLog).Error
 }
 
-// GetAIRequestsByUUID returns all AI requests for a specific UUID
 func (s *LoggingService) GetAIRequestsByUUID(requestUUID string) ([]AIRequestLogModel, error) {
 	var requests []AIRequestLogModel
 	err := s.db.Where("request_uuid = ?", requestUUID).Order("step_number ASC").Find(&requests).Error
 	return requests, err
 }
 
-// GetAIRequestStats returns AI request statistics
 func (s *LoggingService) GetAIRequestStats(days int) (map[string]interface{}, error) {
 	startDate := time.Now().AddDate(0, 0, -days)
 
@@ -306,9 +284,6 @@ func (s *LoggingService) GetAIRequestStats(days int) (map[string]interface{}, er
 	}, nil
 }
 
-// Data Collection Logging Methods
-
-// LogDataCollection logs data collection process
 func (s *LoggingService) LogDataCollection(requestUUID, userID, username, dataType string, dataCount, dataSize, collectionTime int, isSuccess bool, errorMessage, additionalInfo string) error {
 	dataLog := DataCollectionLogModel{
 		RequestUUID:    requestUUID,
@@ -327,23 +302,18 @@ func (s *LoggingService) LogDataCollection(requestUUID, userID, username, dataTy
 	return s.db.Create(&dataLog).Error
 }
 
-// GetDataCollectionsByUUID returns all data collection logs for a specific UUID
 func (s *LoggingService) GetDataCollectionsByUUID(requestUUID string) ([]DataCollectionLogModel, error) {
 	var logs []DataCollectionLogModel
 	err := s.db.Where("request_uuid = ?", requestUUID).Order("collected_at ASC").Find(&logs).Error
 	return logs, err
 }
 
-// Request Processing Logging Methods
-
-// StartRequestProcessing starts logging a request processing lifecycle
-func (s *LoggingService) StartRequestProcessing(requestUUID, userID, username, tweetID, processingType string, totalSteps int) error {
+func (s *LoggingService) StartRequestProcessing(requestUUID, userID, username, tweetID string, totalSteps int) error {
 	processLog := RequestProcessingLogModel{
 		RequestUUID:    requestUUID,
 		UserID:         userID,
 		Username:       username,
 		TweetID:        tweetID,
-		ProcessingType: processingType,
 		Status:         PROCESSING_STATUS_STARTED,
 		TotalSteps:     totalSteps,
 		CompletedSteps: 0,
@@ -353,7 +323,6 @@ func (s *LoggingService) StartRequestProcessing(requestUUID, userID, username, t
 	return s.db.Create(&processLog).Error
 }
 
-// UpdateRequestProcessingStatus updates the status of a request processing
 func (s *LoggingService) UpdateRequestProcessingStatus(requestUUID, status string, completedSteps int) error {
 	updates := map[string]interface{}{
 		"status":          status,
@@ -364,7 +333,6 @@ func (s *LoggingService) UpdateRequestProcessingStatus(requestUUID, status strin
 		now := time.Now()
 		updates["completed_at"] = &now
 
-		// Calculate total time
 		var existing RequestProcessingLogModel
 		if err := s.db.Where("request_uuid = ?", requestUUID).First(&existing).Error; err == nil {
 			totalTime := int(now.Sub(existing.StartedAt).Milliseconds())
@@ -377,50 +345,41 @@ func (s *LoggingService) UpdateRequestProcessingStatus(requestUUID, status strin
 		Updates(updates).Error
 }
 
-// GetRequestProcessingByUUID returns processing log for a specific UUID
 func (s *LoggingService) GetRequestProcessingByUUID(requestUUID string) (*RequestProcessingLogModel, error) {
 	var processLog RequestProcessingLogModel
 	err := s.db.Where("request_uuid = ?", requestUUID).First(&processLog).Error
 	return &processLog, err
 }
 
-// Cleanup Methods
-
-// CleanupOldLogs removes logs older than specified days
 func (s *LoggingService) CleanupOldLogs(days int) error {
 	cutoffDate := time.Now().AddDate(0, 0, -days)
 
 	log.Printf("🧹 Cleaning up logging database records older than %d days (before %s)", days, cutoffDate.Format("2006-01-02"))
 
-	// Clean up message logs
 	result := s.db.Where("created_at < ?", cutoffDate).Delete(&MessageLogModel{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to cleanup message logs: %w", result.Error)
 	}
 	log.Printf("🧹 Cleaned up %d message log records", result.RowsAffected)
 
-	// Clean up user activity logs
 	result = s.db.Where("created_at < ?", cutoffDate).Delete(&UserActivityLogModel{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to cleanup user activity logs: %w", result.Error)
 	}
 	log.Printf("🧹 Cleaned up %d user activity log records", result.RowsAffected)
 
-	// Clean up AI request logs
 	result = s.db.Where("created_at < ?", cutoffDate).Delete(&AIRequestLogModel{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to cleanup AI request logs: %w", result.Error)
 	}
 	log.Printf("🧹 Cleaned up %d AI request log records", result.RowsAffected)
 
-	// Clean up data collection logs
 	result = s.db.Where("created_at < ?", cutoffDate).Delete(&DataCollectionLogModel{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to cleanup data collection logs: %w", result.Error)
 	}
 	log.Printf("🧹 Cleaned up %d data collection log records", result.RowsAffected)
 
-	// Clean up request processing logs
 	result = s.db.Where("created_at < ?", cutoffDate).Delete(&RequestProcessingLogModel{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to cleanup request processing logs: %w", result.Error)
@@ -430,7 +389,6 @@ func (s *LoggingService) CleanupOldLogs(days int) error {
 	return nil
 }
 
-// VacuumDatabase runs VACUUM command to reclaim space
 func (s *LoggingService) VacuumDatabase() error {
 	log.Printf("🧹 Running VACUUM on logging database to reclaim space...")
 	err := s.db.Exec("VACUUM").Error
@@ -441,11 +399,9 @@ func (s *LoggingService) VacuumDatabase() error {
 	return nil
 }
 
-// GetDatabaseStats returns database statistics
 func (s *LoggingService) GetDatabaseStats() (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
-	// Count records in each table
 	var messageCount int64
 	s.db.Model(&MessageLogModel{}).Count(&messageCount)
 	stats["message_logs"] = messageCount
@@ -466,7 +422,6 @@ func (s *LoggingService) GetDatabaseStats() (map[string]interface{}, error) {
 	s.db.Model(&RequestProcessingLogModel{}).Count(&requestProcessingCount)
 	stats["request_processing_logs"] = requestProcessingCount
 
-	// Get oldest and newest records
 	var oldestMessage MessageLogModel
 	s.db.Order("created_at ASC").First(&oldestMessage)
 	if oldestMessage.ID != 0 {
@@ -482,7 +437,6 @@ func (s *LoggingService) GetDatabaseStats() (map[string]interface{}, error) {
 	return stats, nil
 }
 
-// Close closes the logging database connection
 func (s *LoggingService) Close() error {
 	sqlDB, err := s.db.DB()
 	if err != nil {

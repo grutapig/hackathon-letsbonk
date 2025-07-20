@@ -18,7 +18,7 @@ const PROMPT_FILE_STEP1 = "data/txt/prompt_simple.txt"
 const PROMPT_FILE_STEP2 = "data/txt/prompt2.txt"
 
 func main() {
-	// Parse command line flags
+
 	configFile := flag.String("config", ".env", "Configuration file to load (e.g., .env, .dev.env, .prod.env)")
 	showHelp := flag.Bool("help", false, "Show help information")
 	flag.BoolVar(showHelp, "h", false, "Show help information (shorthand)")
@@ -42,13 +42,11 @@ func main() {
 
 	flag.Parse()
 
-	// Show help if requested
 	if *showHelp {
 		flag.Usage()
 		os.Exit(0)
 	}
 
-	// Load configuration file if specified
 	if *configFile != "" {
 		log.Printf("Loading configuration from: %s", *configFile)
 		err := godotenv.Load(*configFile)
@@ -62,23 +60,19 @@ func main() {
 		log.Println("No config file specified, using environment variables only")
 	}
 
-	// Build DI container
 	container, err := BuildContainer()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to build container: %v", err))
 	}
 
-	// Create and run application using DI
 	err = container.Invoke(func(app *Application) {
-		// Initialize application
+
 		if err := app.Initialize(); err != nil {
 			panic(fmt.Sprintf("Failed to initialize application: %v", err))
 		}
 
-		// Setup graceful shutdown
 		defer app.Shutdown()
 
-		// Run application
 		if err := app.Run(); err != nil {
 			panic(fmt.Sprintf("Failed to run application: %v", err))
 		}
@@ -88,12 +82,11 @@ func main() {
 	}
 }
 func initializeData(dbService *DatabaseService, twitterApi *twitterapi.TwitterAPIService) {
-	// Check if CSV import is requested
+
 	csvPath := os.Getenv(ENV_IMPORT_CSV_PATH)
 	if csvPath != "" {
 		log.Printf("CSV import path specified: %s", csvPath)
 
-		// Import from CSV instead of full community load
 		importer := NewCSVImporter(dbService)
 		result, err := importer.ImportCSV(csvPath)
 		if err != nil {
@@ -101,11 +94,10 @@ func initializeData(dbService *DatabaseService, twitterApi *twitterapi.TwitterAP
 			log.Println("Falling back to community data loading...")
 		} else {
 			log.Printf("CSV import successful: %s", result.String())
-			return // Skip community loading if CSV import was successful
+			return
 		}
 	}
 
-	// Check if full community data loading is needed
 	tweetCount, err := dbService.GetTweetCount()
 	if err != nil {
 		log.Printf("Error getting tweet count: %v", err)
@@ -123,7 +115,6 @@ func initializeData(dbService *DatabaseService, twitterApi *twitterapi.TwitterAP
 func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, followers *twitterapi.UserFollowersResponse, followings *twitterapi.UserFollowingsResponse, dbService *DatabaseService, communityActivity *UserCommunityActivity) ClaudeMessages {
 	claudeMessages := ClaudeMessages{}
 
-	// 1. User's ticker mentions with replied messages
 	if userTickerData != nil {
 		userDataJSON, _ := json.Marshal(userTickerData)
 		claudeMessages = append(claudeMessages, ClaudeMessage{
@@ -137,7 +128,6 @@ func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, foll
 		})
 	}
 
-	// 2. All user's friends with FUD analysis
 	allFriends := make([]string, 0)
 	if followers != nil {
 		for _, follower := range followers.Followers {
@@ -172,7 +162,6 @@ func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, foll
 		})
 	}
 
-	// 3. User's community activity grouped by threads
 	if communityActivity != nil && len(communityActivity.ThreadGroups) > 0 {
 		communityActivityJSON, _ := json.Marshal(communityActivity)
 		claudeMessages = append(claudeMessages, ClaudeMessage{
@@ -197,12 +186,12 @@ type FirstStepClaudeResponse struct {
 type SecondStepClaudeResponse struct {
 	IsFUDAttack    bool     `json:"is_fud_attack"`
 	IsFUDUser      bool     `json:"is_fud_user"`
-	FUDProbability float64  `json:"fud_probability"` // 0.0 - 1.0
-	FUDType        string   `json:"fud_type"`        // "professional_trojan_horse", "professional_direct_attack", "professional_statistical", "emotional_escalation", "emotional_dramatic_exit", "casual_criticism", "none"
-	UserRiskLevel  string   `json:"user_risk_level"` // "critical", "high", "medium", "low"
-	KeyEvidence    []string `json:"key_evidence"`    // 2-4 most important evidence points
-	DecisionReason string   `json:"decision_reason"` // 1-2 sentence summary of why this decision was made
-	UserSummary    string   `json:"user_summary"`    // Short conclusion about user type for notifications
+	FUDProbability float64  `json:"fud_probability"`
+	FUDType        string   `json:"fud_type"`
+	UserRiskLevel  string   `json:"user_risk_level"`
+	KeyEvidence    []string `json:"key_evidence"`
+	DecisionReason string   `json:"decision_reason"`
+	UserSummary    string   `json:"user_summary"`
 }
 
 type UserTickerMentionsData struct {
@@ -229,14 +218,13 @@ type ReplyTweet struct {
 
 func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username string, ticker string, dbService *DatabaseService) *UserTickerMentionsData {
 	const MAX_PAGES = 3
-	const TOKEN_LIMIT = 50000 // Half of typical Claude token limit
+	const TOKEN_LIMIT = 50000
 
 	userMessages := []UserMessageWithReplies{}
 	cursor := ""
 	totalPages := 0
 	replyTweetIDs := []string{}
 
-	// Collect user messages with ticker mentions (max 3 pages)
 	for totalPages < MAX_PAGES {
 		searchResponse, err := twitterApi.AdvancedSearch(twitterapi.AdvancedSearchRequest{
 			Query:     fmt.Sprintf("%s from:%s", ticker, username),
@@ -249,13 +237,11 @@ func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username st
 			break
 		}
 
-		// Process messages and collect reply IDs
 		for _, tweet := range searchResponse.Tweets {
-			// Save tweet to database with ticker search source
+
 			searchQuery := fmt.Sprintf("%s from:%s", ticker, username)
 			storeTweetAndUserWithSource(dbService, tweet, TWEET_SOURCE_TICKER_SEARCH, ticker, searchQuery)
 
-			// Save ticker opinion if not already exists
 			if !dbService.TickerOpinionExists(tweet.Id) {
 				tweetCreatedAt, _ := time.Parse(time.RFC3339, tweet.CreatedAt)
 				opinion := UserTickerOpinionModel{
@@ -297,14 +283,13 @@ func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username st
 		cursor = searchResponse.NextCursor
 	}
 
-	// Get all replied-to messages in one batch request
 	if len(replyTweetIDs) > 0 {
 		repliedTweets, err := twitterApi.GetTweetsByIds(replyTweetIDs)
 		if err == nil {
-			// Create a map for quick lookup
+
 			replyMap := make(map[string]ReplyTweet)
 			for _, tweet := range repliedTweets.Tweets {
-				// Save context tweets to database
+
 				storeTweetAndUserWithSource(dbService, tweet, TWEET_SOURCE_CONTEXT, "", "context for "+username)
 
 				replyMap[tweet.Id] = ReplyTweet{
@@ -315,13 +300,11 @@ func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username st
 				}
 			}
 
-			// Associate replies with user messages and update ticker opinions
 			for i := range userMessages {
 				if userMessages[i].InReplyToID != "" {
 					if reply, exists := replyMap[userMessages[i].InReplyToID]; exists {
 						userMessages[i].RepliedTo = &reply
 
-						// Update ticker opinion with replied-to context
 						opinion := UserTickerOpinionModel{}
 						result := dbService.db.Where("tweet_id = ?", userMessages[i].TweetID).First(&opinion)
 						if result.Error == nil {
@@ -335,25 +318,21 @@ func getUserTickerMentions(twitterApi *twitterapi.TwitterAPIService, username st
 		}
 	}
 
-	// Create result data
 	result := &UserTickerMentionsData{
 		UserMessages:    userMessages,
 		TotalMessages:   len(userMessages),
 		RepliedMessages: len(replyTweetIDs),
 	}
 
-	// Calculate token count and truncate if necessary
 	jsonData, _ := json.Marshal(result)
-	tokenCount := len(string(jsonData)) / 4 // Rough token estimation
+	tokenCount := len(string(jsonData)) / 4
 	result.TokenCount = tokenCount
 
-	// If exceeds token limit, cut data in half
 	if tokenCount > TOKEN_LIMIT {
 		halfLength := len(userMessages) / 2
 		result.UserMessages = userMessages[:halfLength]
 		result.TotalMessages = halfLength
 
-		// Recalculate token count
 		jsonData, _ = json.Marshal(result)
 		result.TokenCount = len(string(jsonData)) / 4
 	}
@@ -389,7 +368,7 @@ func SendIfNotExistsTweetToChannel(tweet twitterapi.Tweet, newMessageCh chan twi
 		}
 		tweet.CreatedAtParsed, _ = twitterapi_reverse.ParseTwitterTime(tweet.CreatedAt)
 		newMessage.CreatedAtParsed = tweet.CreatedAtParsed
-		// Log new message
+
 		if loggingService != nil {
 			err := loggingService.LogMessage(tweet.Id, tweet.Author.Id, tweet.Author.UserName, tweet.Text, TWEET_SOURCE_COMMUNITY, tweet.CreatedAtParsed)
 			if err != nil {
