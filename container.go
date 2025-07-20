@@ -93,6 +93,11 @@ func ProvideClaudeAPI(config *Config) (*ClaudeApi, error) {
 func ProvideTwitterAPI(config *Config) *twitterapi.TwitterAPIService {
 	return twitterapi.NewTwitterAPIService(config.TwitterAPIKey, config.TwitterAPIBaseURL, config.ProxyDSN)
 }
+func ProvideTwitterReverseAPI(config *Config) *twitterapi_reverse.TwitterReverseService {
+	auth := twitterapi_reverse.NewTwitterAuth(os.Getenv(ENV_TWITTER_REVERSE_AUTHORIZATION), os.Getenv(ENV_TWITTER_REVERSE_CSRF_TOKEN), os.Getenv(ENV_TWITTER_REVERSE_COOKIE))
+
+	return twitterapi_reverse.NewTwitterReverseApi(auth, config.ProxyDSN, false)
+}
 
 func ProvideDatabaseService(config *Config) (*DatabaseService, error) {
 	return NewDatabaseService(config.DatabaseName)
@@ -133,6 +138,9 @@ func BuildContainer() (*dig.Container, error) {
 	}
 
 	if err := container.Provide(ProvideTwitterAPI); err != nil {
+		return nil, fmt.Errorf("failed to provide Twitter API: %w", err)
+	}
+	if err := container.Provide(ProvideTwitterReverseAPI); err != nil {
 		return nil, fmt.Errorf("failed to provide Twitter API: %w", err)
 	}
 

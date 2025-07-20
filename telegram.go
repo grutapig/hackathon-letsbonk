@@ -315,7 +315,9 @@ func (t *TelegramService) processUpdates() error {
 					continue
 				}
 				go t.handleUpdateReverseAuthCommand(chatID, text)
-			case command == "/help" || command == "/start":
+			case command == "/start":
+				go t.handleStartCommand(chatID, strings.Join(args, ""))
+			case command == "/help":
 				go t.handleHelpCommand(chatID)
 			default:
 				go t.handleHelpCommand(chatID)

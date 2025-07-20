@@ -898,6 +898,13 @@ func (t *TelegramService) handleTickerHistoryCommand(chatID int64, command strin
 	t.SendMessage(chatID, historyMessage.String())
 }
 
+func (t *TelegramService) handleStartCommand(chatID int64, command string) {
+	if strings.HasPrefix(command, "cache_") {
+		t.handleCacheCommand(chatID, "/"+command)
+	} else {
+		t.handleHelpCommand(chatID)
+	}
+}
 func (t *TelegramService) handleCacheCommand(chatID int64, command string) {
 
 	prefix := "/cache_"

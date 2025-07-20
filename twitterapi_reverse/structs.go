@@ -2259,6 +2259,7 @@ type NotificationsResponse struct {
 														Retweeted            bool   `json:"retweeted"`
 														UserIdStr            string `json:"user_id_str"`
 														IdStr                string `json:"id_str"`
+														QuotedStatusIdStr    string `json:"quoted_status_id_str,omitempty"`
 														ExtendedEntities     struct {
 															Media []struct {
 																DisplayUrl           string `json:"display_url"`
@@ -2366,6 +2367,1356 @@ type NotificationsResponse struct {
 												} `json:"result"`
 											} `json:"tweet_results"`
 											TweetDisplayType string `json:"tweetDisplayType"`
+										} `json:"itemContent,omitempty"`
+										ClientEventInfo struct {
+											Component string `json:"component"`
+											Element   string `json:"element"`
+											Details   struct {
+												NotificationDetails struct {
+													ImpressionId string `json:"impressionId"`
+													Metadata     string `json:"metadata"`
+												} `json:"notificationDetails"`
+											} `json:"details"`
+										} `json:"clientEventInfo,omitempty"`
+									} `json:"content"`
+								} `json:"entries,omitempty"`
+								SortIndex string `json:"sort_index,omitempty"`
+							} `json:"instructions"`
+						} `json:"timeline"`
+					} `json:"notification_timeline"`
+				} `json:"result"`
+			} `json:"user_results"`
+		} `json:"viewer_v2"`
+	} `json:"data"`
+}
+type T struct {
+	Data struct {
+		ViewerV2 struct {
+			UserResults struct {
+				Result struct {
+					Typename             string `json:"__typename"`
+					RestId               string `json:"rest_id"`
+					NotificationTimeline struct {
+						Id       string `json:"id"`
+						Timeline struct {
+							Instructions []struct {
+								Type    string `json:"type"`
+								Entries []struct {
+									EntryId   string `json:"entryId"`
+									SortIndex string `json:"sortIndex"`
+									Content   struct {
+										EntryType   string `json:"entryType"`
+										Typename    string `json:"__typename"`
+										Value       string `json:"value,omitempty"`
+										CursorType  string `json:"cursorType,omitempty"`
+										ItemContent struct {
+											ItemType     string `json:"itemType"`
+											Typename     string `json:"__typename"`
+											TweetResults struct {
+												Result struct {
+													Typename string `json:"__typename"`
+													RestId   string `json:"rest_id"`
+													Core     struct {
+														UserResults struct {
+															Result struct {
+																Typename                   string `json:"__typename"`
+																Id                         string `json:"id"`
+																RestId                     string `json:"rest_id"`
+																AffiliatesHighlightedLabel struct {
+																} `json:"affiliates_highlighted_label"`
+																Avatar struct {
+																	ImageUrl string `json:"image_url"`
+																} `json:"avatar"`
+																Core struct {
+																	CreatedAt  string `json:"created_at"`
+																	Name       string `json:"name"`
+																	ScreenName string `json:"screen_name"`
+																} `json:"core"`
+																DmPermissions struct {
+																	CanDm bool `json:"can_dm"`
+																} `json:"dm_permissions"`
+																HasGraduatedAccess bool `json:"has_graduated_access"`
+																IsBlueVerified     bool `json:"is_blue_verified"`
+																Legacy             struct {
+																	DefaultProfile      bool   `json:"default_profile"`
+																	DefaultProfileImage bool   `json:"default_profile_image"`
+																	Description         string `json:"description"`
+																	Entities            struct {
+																		Description struct {
+																			Urls []interface{} `json:"urls"`
+																		} `json:"description"`
+																		Url struct {
+																			Urls []struct {
+																				DisplayUrl  string `json:"display_url"`
+																				ExpandedUrl string `json:"expanded_url"`
+																				Url         string `json:"url"`
+																				Indices     []int  `json:"indices"`
+																			} `json:"urls"`
+																		} `json:"url,omitempty"`
+																	} `json:"entities"`
+																	FastFollowersCount      int           `json:"fast_followers_count"`
+																	FavouritesCount         int           `json:"favourites_count"`
+																	FollowersCount          int           `json:"followers_count"`
+																	FriendsCount            int           `json:"friends_count"`
+																	HasCustomTimelines      bool          `json:"has_custom_timelines"`
+																	IsTranslator            bool          `json:"is_translator"`
+																	ListedCount             int           `json:"listed_count"`
+																	MediaCount              int           `json:"media_count"`
+																	NormalFollowersCount    int           `json:"normal_followers_count"`
+																	PinnedTweetIdsStr       []string      `json:"pinned_tweet_ids_str"`
+																	PossiblySensitive       bool          `json:"possibly_sensitive"`
+																	ProfileBannerUrl        string        `json:"profile_banner_url"`
+																	ProfileInterstitialType string        `json:"profile_interstitial_type"`
+																	StatusesCount           int           `json:"statuses_count"`
+																	TranslatorType          string        `json:"translator_type"`
+																	Url                     string        `json:"url,omitempty"`
+																	WantRetweets            bool          `json:"want_retweets"`
+																	WithheldInCountries     []interface{} `json:"withheld_in_countries"`
+																} `json:"legacy"`
+																Location struct {
+																	Location string `json:"location"`
+																} `json:"location"`
+																MediaPermissions struct {
+																	CanMediaTag bool `json:"can_media_tag"`
+																} `json:"media_permissions"`
+																ParodyCommentaryFanLabel string `json:"parody_commentary_fan_label"`
+																ProfileImageShape        string `json:"profile_image_shape"`
+																Privacy                  struct {
+																	Protected bool `json:"protected"`
+																} `json:"privacy"`
+																RelationshipPerspectives struct {
+																	FollowedBy bool `json:"followed_by"`
+																	Following  bool `json:"following"`
+																} `json:"relationship_perspectives"`
+																TipjarSettings struct {
+																	IsEnabled bool `json:"is_enabled,omitempty"`
+																} `json:"tipjar_settings"`
+																Verification struct {
+																	Verified bool `json:"verified"`
+																} `json:"verification"`
+															} `json:"result"`
+														} `json:"user_results"`
+													} `json:"core"`
+													UnmentionData struct {
+													} `json:"unmention_data"`
+													EditControl struct {
+														EditTweetIds       []string `json:"edit_tweet_ids"`
+														EditableUntilMsecs string   `json:"editable_until_msecs"`
+														IsEditEligible     bool     `json:"is_edit_eligible"`
+														EditsRemaining     string   `json:"edits_remaining"`
+													} `json:"edit_control"`
+													IsTranslatable bool `json:"is_translatable"`
+													Views          struct {
+														Count string `json:"count"`
+														State string `json:"state"`
+													} `json:"views"`
+													Source             string `json:"source"`
+													GrokAnalysisButton bool   `json:"grok_analysis_button"`
+													QuotedStatusResult struct {
+														Result struct {
+															Typename string `json:"__typename"`
+															RestId   string `json:"rest_id"`
+															Core     struct {
+																UserResults struct {
+																	Result struct {
+																		Typename                   string `json:"__typename"`
+																		Id                         string `json:"id"`
+																		RestId                     string `json:"rest_id"`
+																		AffiliatesHighlightedLabel struct {
+																		} `json:"affiliates_highlighted_label"`
+																		Avatar struct {
+																			ImageUrl string `json:"image_url"`
+																		} `json:"avatar"`
+																		Core struct {
+																			CreatedAt  string `json:"created_at"`
+																			Name       string `json:"name"`
+																			ScreenName string `json:"screen_name"`
+																		} `json:"core"`
+																		DmPermissions struct {
+																			CanDm bool `json:"can_dm"`
+																		} `json:"dm_permissions"`
+																		HasGraduatedAccess bool `json:"has_graduated_access"`
+																		IsBlueVerified     bool `json:"is_blue_verified"`
+																		Legacy             struct {
+																			DefaultProfile      bool   `json:"default_profile"`
+																			DefaultProfileImage bool   `json:"default_profile_image"`
+																			Description         string `json:"description"`
+																			Entities            struct {
+																				Description struct {
+																					Urls []interface{} `json:"urls"`
+																				} `json:"description"`
+																			} `json:"entities"`
+																			FastFollowersCount      int           `json:"fast_followers_count"`
+																			FavouritesCount         int           `json:"favourites_count"`
+																			FollowersCount          int           `json:"followers_count"`
+																			FriendsCount            int           `json:"friends_count"`
+																			HasCustomTimelines      bool          `json:"has_custom_timelines"`
+																			IsTranslator            bool          `json:"is_translator"`
+																			ListedCount             int           `json:"listed_count"`
+																			MediaCount              int           `json:"media_count"`
+																			NormalFollowersCount    int           `json:"normal_followers_count"`
+																			PinnedTweetIdsStr       []interface{} `json:"pinned_tweet_ids_str"`
+																			PossiblySensitive       bool          `json:"possibly_sensitive"`
+																			ProfileBannerUrl        string        `json:"profile_banner_url"`
+																			ProfileInterstitialType string        `json:"profile_interstitial_type"`
+																			StatusesCount           int           `json:"statuses_count"`
+																			TranslatorType          string        `json:"translator_type"`
+																			WantRetweets            bool          `json:"want_retweets"`
+																			WithheldInCountries     []interface{} `json:"withheld_in_countries"`
+																		} `json:"legacy"`
+																		Location struct {
+																			Location string `json:"location"`
+																		} `json:"location"`
+																		MediaPermissions struct {
+																			CanMediaTag bool `json:"can_media_tag"`
+																		} `json:"media_permissions"`
+																		ParodyCommentaryFanLabel string `json:"parody_commentary_fan_label"`
+																		ProfileImageShape        string `json:"profile_image_shape"`
+																		Privacy                  struct {
+																			Protected bool `json:"protected"`
+																		} `json:"privacy"`
+																		RelationshipPerspectives struct {
+																			FollowedBy bool `json:"followed_by"`
+																			Following  bool `json:"following"`
+																		} `json:"relationship_perspectives"`
+																		TipjarSettings struct {
+																			IsEnabled bool `json:"is_enabled"`
+																		} `json:"tipjar_settings"`
+																		Verification struct {
+																			Verified bool `json:"verified"`
+																		} `json:"verification"`
+																	} `json:"result"`
+																} `json:"user_results"`
+															} `json:"core"`
+															UnmentionData struct {
+															} `json:"unmention_data"`
+															EditControl struct {
+																EditTweetIds       []string `json:"edit_tweet_ids"`
+																EditableUntilMsecs string   `json:"editable_until_msecs"`
+																IsEditEligible     bool     `json:"is_edit_eligible"`
+																EditsRemaining     string   `json:"edits_remaining"`
+															} `json:"edit_control"`
+															IsTranslatable bool `json:"is_translatable"`
+															Views          struct {
+																Count string `json:"count"`
+																State string `json:"state"`
+															} `json:"views"`
+															Source             string `json:"source"`
+															GrokAnalysisButton bool   `json:"grok_analysis_button"`
+															Legacy             struct {
+																BookmarkCount     int    `json:"bookmark_count"`
+																Bookmarked        bool   `json:"bookmarked"`
+																CreatedAt         string `json:"created_at"`
+																ConversationIdStr string `json:"conversation_id_str"`
+																DisplayTextRange  []int  `json:"display_text_range"`
+																Entities          struct {
+																	Hashtags []interface{} `json:"hashtags"`
+																	Symbols  []struct {
+																		Indices []int  `json:"indices"`
+																		Text    string `json:"text"`
+																	} `json:"symbols"`
+																	Timestamps   []interface{} `json:"timestamps"`
+																	Urls         []interface{} `json:"urls"`
+																	UserMentions []interface{} `json:"user_mentions"`
+																} `json:"entities"`
+																FavoriteCount int    `json:"favorite_count"`
+																Favorited     bool   `json:"favorited"`
+																FullText      string `json:"full_text"`
+																IsQuoteStatus bool   `json:"is_quote_status"`
+																Lang          string `json:"lang"`
+																QuoteCount    int    `json:"quote_count"`
+																ReplyCount    int    `json:"reply_count"`
+																RetweetCount  int    `json:"retweet_count"`
+																Retweeted     bool   `json:"retweeted"`
+																UserIdStr     string `json:"user_id_str"`
+																IdStr         string `json:"id_str"`
+															} `json:"legacy"`
+														} `json:"result"`
+													} `json:"quoted_status_result,omitempty"`
+													Legacy struct {
+														BookmarkCount     int    `json:"bookmark_count"`
+														Bookmarked        bool   `json:"bookmarked"`
+														CreatedAt         string `json:"created_at"`
+														ConversationIdStr string `json:"conversation_id_str"`
+														DisplayTextRange  []int  `json:"display_text_range"`
+														Entities          struct {
+															Hashtags []struct {
+																Indices []int  `json:"indices"`
+																Text    string `json:"text"`
+															} `json:"hashtags"`
+															Symbols []struct {
+																Indices []int  `json:"indices"`
+																Text    string `json:"text"`
+															} `json:"symbols"`
+															Timestamps   []interface{} `json:"timestamps"`
+															Urls         []interface{} `json:"urls"`
+															UserMentions []struct {
+																IdStr      string `json:"id_str"`
+																Name       string `json:"name"`
+																ScreenName string `json:"screen_name"`
+																Indices    []int  `json:"indices"`
+															} `json:"user_mentions"`
+															Media []struct {
+																DisplayUrl           string `json:"display_url"`
+																ExpandedUrl          string `json:"expanded_url"`
+																IdStr                string `json:"id_str"`
+																Indices              []int  `json:"indices"`
+																MediaKey             string `json:"media_key"`
+																MediaUrlHttps        string `json:"media_url_https"`
+																Type                 string `json:"type"`
+																Url                  string `json:"url"`
+																ExtMediaAvailability struct {
+																	Status string `json:"status"`
+																} `json:"ext_media_availability"`
+																Features struct {
+																	Large struct {
+																		Faces []struct {
+																			X int `json:"x"`
+																			Y int `json:"y"`
+																			H int `json:"h"`
+																			W int `json:"w"`
+																		} `json:"faces"`
+																	} `json:"large"`
+																	Medium struct {
+																		Faces []struct {
+																			X int `json:"x"`
+																			Y int `json:"y"`
+																			H int `json:"h"`
+																			W int `json:"w"`
+																		} `json:"faces"`
+																	} `json:"medium"`
+																	Small struct {
+																		Faces []struct {
+																			X int `json:"x"`
+																			Y int `json:"y"`
+																			H int `json:"h"`
+																			W int `json:"w"`
+																		} `json:"faces"`
+																	} `json:"small"`
+																	Orig struct {
+																		Faces []struct {
+																			X int `json:"x"`
+																			Y int `json:"y"`
+																			H int `json:"h"`
+																			W int `json:"w"`
+																		} `json:"faces"`
+																	} `json:"orig"`
+																} `json:"features,omitempty"`
+																Sizes struct {
+																	Large struct {
+																		H      int    `json:"h"`
+																		W      int    `json:"w"`
+																		Resize string `json:"resize"`
+																	} `json:"large"`
+																	Medium struct {
+																		H      int    `json:"h"`
+																		W      int    `json:"w"`
+																		Resize string `json:"resize"`
+																	} `json:"medium"`
+																	Small struct {
+																		H      int    `json:"h"`
+																		W      int    `json:"w"`
+																		Resize string `json:"resize"`
+																	} `json:"small"`
+																	Thumb struct {
+																		H      int    `json:"h"`
+																		W      int    `json:"w"`
+																		Resize string `json:"resize"`
+																	} `json:"thumb"`
+																} `json:"sizes"`
+																OriginalInfo struct {
+																	Height     int `json:"height"`
+																	Width      int `json:"width"`
+																	FocusRects []struct {
+																		X int `json:"x"`
+																		Y int `json:"y"`
+																		W int `json:"w"`
+																		H int `json:"h"`
+																	} `json:"focus_rects"`
+																} `json:"original_info"`
+																AllowDownloadStatus struct {
+																	AllowDownload bool `json:"allow_download"`
+																} `json:"allow_download_status,omitempty"`
+																MediaResults struct {
+																	Result struct {
+																		MediaKey string `json:"media_key"`
+																	} `json:"result"`
+																} `json:"media_results"`
+																VideoInfo struct {
+																	AspectRatio []int `json:"aspect_ratio"`
+																	Variants    []struct {
+																		Bitrate     int    `json:"bitrate"`
+																		ContentType string `json:"content_type"`
+																		Url         string `json:"url"`
+																	} `json:"variants"`
+																} `json:"video_info,omitempty"`
+															} `json:"media,omitempty"`
+														} `json:"entities"`
+														FavoriteCount         int    `json:"favorite_count"`
+														Favorited             bool   `json:"favorited"`
+														FullText              string `json:"full_text"`
+														InReplyToScreenName   string `json:"in_reply_to_screen_name"`
+														InReplyToUserIdStr    string `json:"in_reply_to_user_id_str"`
+														IsQuoteStatus         bool   `json:"is_quote_status"`
+														Lang                  string `json:"lang"`
+														QuoteCount            int    `json:"quote_count"`
+														QuotedStatusIdStr     string `json:"quoted_status_id_str,omitempty"`
+														QuotedStatusPermalink struct {
+															Url      string `json:"url"`
+															Expanded string `json:"expanded"`
+															Display  string `json:"display"`
+														} `json:"quoted_status_permalink,omitempty"`
+														ReplyCount       int    `json:"reply_count"`
+														RetweetCount     int    `json:"retweet_count"`
+														Retweeted        bool   `json:"retweeted"`
+														UserIdStr        string `json:"user_id_str"`
+														IdStr            string `json:"id_str"`
+														ExtendedEntities struct {
+															Media []struct {
+																DisplayUrl           string `json:"display_url"`
+																ExpandedUrl          string `json:"expanded_url"`
+																IdStr                string `json:"id_str"`
+																Indices              []int  `json:"indices"`
+																MediaKey             string `json:"media_key"`
+																MediaUrlHttps        string `json:"media_url_https"`
+																Type                 string `json:"type"`
+																Url                  string `json:"url"`
+																ExtMediaAvailability struct {
+																	Status string `json:"status"`
+																} `json:"ext_media_availability"`
+																Features struct {
+																	Large struct {
+																		Faces []struct {
+																			X int `json:"x"`
+																			Y int `json:"y"`
+																			H int `json:"h"`
+																			W int `json:"w"`
+																		} `json:"faces"`
+																	} `json:"large"`
+																	Medium struct {
+																		Faces []struct {
+																			X int `json:"x"`
+																			Y int `json:"y"`
+																			H int `json:"h"`
+																			W int `json:"w"`
+																		} `json:"faces"`
+																	} `json:"medium"`
+																	Small struct {
+																		Faces []struct {
+																			X int `json:"x"`
+																			Y int `json:"y"`
+																			H int `json:"h"`
+																			W int `json:"w"`
+																		} `json:"faces"`
+																	} `json:"small"`
+																	Orig struct {
+																		Faces []struct {
+																			X int `json:"x"`
+																			Y int `json:"y"`
+																			H int `json:"h"`
+																			W int `json:"w"`
+																		} `json:"faces"`
+																	} `json:"orig"`
+																} `json:"features,omitempty"`
+																Sizes struct {
+																	Large struct {
+																		H      int    `json:"h"`
+																		W      int    `json:"w"`
+																		Resize string `json:"resize"`
+																	} `json:"large"`
+																	Medium struct {
+																		H      int    `json:"h"`
+																		W      int    `json:"w"`
+																		Resize string `json:"resize"`
+																	} `json:"medium"`
+																	Small struct {
+																		H      int    `json:"h"`
+																		W      int    `json:"w"`
+																		Resize string `json:"resize"`
+																	} `json:"small"`
+																	Thumb struct {
+																		H      int    `json:"h"`
+																		W      int    `json:"w"`
+																		Resize string `json:"resize"`
+																	} `json:"thumb"`
+																} `json:"sizes"`
+																OriginalInfo struct {
+																	Height     int `json:"height"`
+																	Width      int `json:"width"`
+																	FocusRects []struct {
+																		X int `json:"x"`
+																		Y int `json:"y"`
+																		W int `json:"w"`
+																		H int `json:"h"`
+																	} `json:"focus_rects"`
+																} `json:"original_info"`
+																AllowDownloadStatus struct {
+																	AllowDownload bool `json:"allow_download"`
+																} `json:"allow_download_status,omitempty"`
+																MediaResults struct {
+																	Result struct {
+																		MediaKey string `json:"media_key"`
+																	} `json:"result"`
+																} `json:"media_results"`
+																VideoInfo struct {
+																	AspectRatio []int `json:"aspect_ratio"`
+																	Variants    []struct {
+																		Bitrate     int    `json:"bitrate"`
+																		ContentType string `json:"content_type"`
+																		Url         string `json:"url"`
+																	} `json:"variants"`
+																} `json:"video_info,omitempty"`
+															} `json:"media"`
+														} `json:"extended_entities,omitempty"`
+														InReplyToStatusIdStr      string `json:"in_reply_to_status_id_str,omitempty"`
+														PossiblySensitive         bool   `json:"possibly_sensitive,omitempty"`
+														PossiblySensitiveEditable bool   `json:"possibly_sensitive_editable,omitempty"`
+													} `json:"legacy"`
+												} `json:"result"`
+											} `json:"tweet_results,omitempty"`
+											TweetDisplayType string `json:"tweetDisplayType,omitempty"`
+											Id               string `json:"id,omitempty"`
+											NotificationIcon string `json:"notification_icon,omitempty"`
+											RichMessage      struct {
+												Rtl      bool   `json:"rtl"`
+												Text     string `json:"text"`
+												Entities []struct {
+													FromIndex int `json:"fromIndex"`
+													ToIndex   int `json:"toIndex"`
+													Ref       struct {
+														Type        string `json:"type"`
+														UserResults struct {
+															Result struct {
+																Typename                   string `json:"__typename"`
+																Id                         string `json:"id"`
+																RestId                     string `json:"rest_id"`
+																AffiliatesHighlightedLabel struct {
+																} `json:"affiliates_highlighted_label"`
+																Avatar struct {
+																	ImageUrl string `json:"image_url"`
+																} `json:"avatar"`
+																Core struct {
+																	CreatedAt  string `json:"created_at"`
+																	Name       string `json:"name"`
+																	ScreenName string `json:"screen_name"`
+																} `json:"core"`
+																DmPermissions struct {
+																	CanDm bool `json:"can_dm"`
+																} `json:"dm_permissions"`
+																HasGraduatedAccess bool `json:"has_graduated_access"`
+																IsBlueVerified     bool `json:"is_blue_verified"`
+																Legacy             struct {
+																	DefaultProfile      bool   `json:"default_profile"`
+																	DefaultProfileImage bool   `json:"default_profile_image"`
+																	Description         string `json:"description"`
+																	Entities            struct {
+																		Description struct {
+																			Urls []interface{} `json:"urls"`
+																		} `json:"description"`
+																		Url struct {
+																			Urls []struct {
+																				DisplayUrl  string `json:"display_url"`
+																				ExpandedUrl string `json:"expanded_url"`
+																				Url         string `json:"url"`
+																				Indices     []int  `json:"indices"`
+																			} `json:"urls"`
+																		} `json:"url,omitempty"`
+																	} `json:"entities"`
+																	FastFollowersCount      int           `json:"fast_followers_count"`
+																	FavouritesCount         int           `json:"favourites_count"`
+																	FollowersCount          int           `json:"followers_count"`
+																	FriendsCount            int           `json:"friends_count"`
+																	HasCustomTimelines      bool          `json:"has_custom_timelines"`
+																	IsTranslator            bool          `json:"is_translator"`
+																	ListedCount             int           `json:"listed_count"`
+																	MediaCount              int           `json:"media_count"`
+																	NormalFollowersCount    int           `json:"normal_followers_count"`
+																	PinnedTweetIdsStr       []string      `json:"pinned_tweet_ids_str"`
+																	PossiblySensitive       bool          `json:"possibly_sensitive"`
+																	ProfileBannerUrl        string        `json:"profile_banner_url"`
+																	ProfileInterstitialType string        `json:"profile_interstitial_type"`
+																	StatusesCount           int           `json:"statuses_count"`
+																	TranslatorType          string        `json:"translator_type"`
+																	Url                     string        `json:"url,omitempty"`
+																	WantRetweets            bool          `json:"want_retweets"`
+																	WithheldInCountries     []interface{} `json:"withheld_in_countries"`
+																} `json:"legacy"`
+																Location struct {
+																	Location string `json:"location"`
+																} `json:"location"`
+																MediaPermissions struct {
+																	CanMediaTag bool `json:"can_media_tag"`
+																} `json:"media_permissions"`
+																ParodyCommentaryFanLabel string `json:"parody_commentary_fan_label"`
+																ProfileImageShape        string `json:"profile_image_shape"`
+																Privacy                  struct {
+																	Protected bool `json:"protected"`
+																} `json:"privacy"`
+																RelationshipPerspectives struct {
+																	FollowedBy bool `json:"followed_by"`
+																	Following  bool `json:"following"`
+																} `json:"relationship_perspectives"`
+																TipjarSettings struct {
+																	IsEnabled bool `json:"is_enabled,omitempty"`
+																} `json:"tipjar_settings"`
+																Verification struct {
+																	Verified bool `json:"verified"`
+																} `json:"verification"`
+															} `json:"result"`
+														} `json:"user_results"`
+													} `json:"ref"`
+												} `json:"entities"`
+											} `json:"rich_message,omitempty"`
+											NotificationUrl struct {
+												Url                string `json:"url"`
+												UrlType            string `json:"urlType"`
+												UrtEndpointOptions struct {
+													CacheId  string `json:"cacheId"`
+													Subtitle string `json:"subtitle"`
+													Title    string `json:"title"`
+												} `json:"urtEndpointOptions,omitempty"`
+											} `json:"notification_url,omitempty"`
+											Template struct {
+												Typename      string `json:"__typename"`
+												TargetObjects []struct {
+													Typename     string `json:"__typename"`
+													TweetResults struct {
+														Result struct {
+															Typename string `json:"__typename"`
+															RestId   string `json:"rest_id"`
+															Core     struct {
+																UserResults struct {
+																	Result struct {
+																		Typename                   string `json:"__typename"`
+																		Id                         string `json:"id"`
+																		RestId                     string `json:"rest_id"`
+																		AffiliatesHighlightedLabel struct {
+																		} `json:"affiliates_highlighted_label"`
+																		Avatar struct {
+																			ImageUrl string `json:"image_url"`
+																		} `json:"avatar"`
+																		Core struct {
+																			CreatedAt  string `json:"created_at"`
+																			Name       string `json:"name"`
+																			ScreenName string `json:"screen_name"`
+																		} `json:"core"`
+																		DmPermissions struct {
+																			CanDm bool `json:"can_dm"`
+																		} `json:"dm_permissions"`
+																		HasGraduatedAccess bool `json:"has_graduated_access"`
+																		IsBlueVerified     bool `json:"is_blue_verified"`
+																		Legacy             struct {
+																			DefaultProfile      bool   `json:"default_profile"`
+																			DefaultProfileImage bool   `json:"default_profile_image"`
+																			Description         string `json:"description"`
+																			Entities            struct {
+																				Description struct {
+																					Urls []interface{} `json:"urls"`
+																				} `json:"description"`
+																			} `json:"entities"`
+																			FastFollowersCount      int           `json:"fast_followers_count"`
+																			FavouritesCount         int           `json:"favourites_count"`
+																			FollowersCount          int           `json:"followers_count"`
+																			FriendsCount            int           `json:"friends_count"`
+																			HasCustomTimelines      bool          `json:"has_custom_timelines"`
+																			IsTranslator            bool          `json:"is_translator"`
+																			ListedCount             int           `json:"listed_count"`
+																			MediaCount              int           `json:"media_count"`
+																			NormalFollowersCount    int           `json:"normal_followers_count"`
+																			PinnedTweetIdsStr       []string      `json:"pinned_tweet_ids_str"`
+																			PossiblySensitive       bool          `json:"possibly_sensitive"`
+																			ProfileBannerUrl        string        `json:"profile_banner_url"`
+																			ProfileInterstitialType string        `json:"profile_interstitial_type"`
+																			StatusesCount           int           `json:"statuses_count"`
+																			TranslatorType          string        `json:"translator_type"`
+																			WantRetweets            bool          `json:"want_retweets"`
+																			WithheldInCountries     []interface{} `json:"withheld_in_countries"`
+																		} `json:"legacy"`
+																		Location struct {
+																			Location string `json:"location"`
+																		} `json:"location"`
+																		MediaPermissions struct {
+																			CanMediaTag bool `json:"can_media_tag"`
+																		} `json:"media_permissions"`
+																		ParodyCommentaryFanLabel string `json:"parody_commentary_fan_label"`
+																		ProfileImageShape        string `json:"profile_image_shape"`
+																		Privacy                  struct {
+																			Protected bool `json:"protected"`
+																		} `json:"privacy"`
+																		RelationshipPerspectives struct {
+																			FollowedBy bool `json:"followed_by"`
+																			Following  bool `json:"following"`
+																		} `json:"relationship_perspectives"`
+																		TipjarSettings struct {
+																			IsEnabled      bool   `json:"is_enabled,omitempty"`
+																			EthereumHandle string `json:"ethereum_handle,omitempty"`
+																		} `json:"tipjar_settings"`
+																		Verification struct {
+																			Verified bool `json:"verified"`
+																		} `json:"verification"`
+																	} `json:"result"`
+																} `json:"user_results"`
+															} `json:"core"`
+															UnmentionData struct {
+															} `json:"unmention_data"`
+															EditControl struct {
+																EditTweetIds       []string `json:"edit_tweet_ids"`
+																EditableUntilMsecs string   `json:"editable_until_msecs"`
+																IsEditEligible     bool     `json:"is_edit_eligible"`
+																EditsRemaining     string   `json:"edits_remaining"`
+															} `json:"edit_control"`
+															IsTranslatable bool `json:"is_translatable"`
+															Views          struct {
+																Count string `json:"count"`
+																State string `json:"state"`
+															} `json:"views"`
+															Source             string `json:"source"`
+															GrokAnalysisButton bool   `json:"grok_analysis_button"`
+															QuotedStatusResult struct {
+																Result struct {
+																	Typename string `json:"__typename"`
+																	RestId   string `json:"rest_id"`
+																	Core     struct {
+																		UserResults struct {
+																			Result struct {
+																				Typename                   string `json:"__typename"`
+																				Id                         string `json:"id"`
+																				RestId                     string `json:"rest_id"`
+																				AffiliatesHighlightedLabel struct {
+																				} `json:"affiliates_highlighted_label"`
+																				Avatar struct {
+																					ImageUrl string `json:"image_url"`
+																				} `json:"avatar"`
+																				Core struct {
+																					CreatedAt  string `json:"created_at"`
+																					Name       string `json:"name"`
+																					ScreenName string `json:"screen_name"`
+																				} `json:"core"`
+																				DmPermissions struct {
+																					CanDm bool `json:"can_dm"`
+																				} `json:"dm_permissions"`
+																				HasGraduatedAccess bool `json:"has_graduated_access"`
+																				IsBlueVerified     bool `json:"is_blue_verified"`
+																				Legacy             struct {
+																					DefaultProfile      bool   `json:"default_profile"`
+																					DefaultProfileImage bool   `json:"default_profile_image"`
+																					Description         string `json:"description"`
+																					Entities            struct {
+																						Description struct {
+																							Urls []interface{} `json:"urls"`
+																						} `json:"description"`
+																					} `json:"entities"`
+																					FastFollowersCount      int           `json:"fast_followers_count"`
+																					FavouritesCount         int           `json:"favourites_count"`
+																					FollowersCount          int           `json:"followers_count"`
+																					FriendsCount            int           `json:"friends_count"`
+																					HasCustomTimelines      bool          `json:"has_custom_timelines"`
+																					IsTranslator            bool          `json:"is_translator"`
+																					ListedCount             int           `json:"listed_count"`
+																					MediaCount              int           `json:"media_count"`
+																					NormalFollowersCount    int           `json:"normal_followers_count"`
+																					PinnedTweetIdsStr       []string      `json:"pinned_tweet_ids_str"`
+																					PossiblySensitive       bool          `json:"possibly_sensitive"`
+																					ProfileBannerUrl        string        `json:"profile_banner_url"`
+																					ProfileInterstitialType string        `json:"profile_interstitial_type"`
+																					StatusesCount           int           `json:"statuses_count"`
+																					TranslatorType          string        `json:"translator_type"`
+																					WantRetweets            bool          `json:"want_retweets"`
+																					WithheldInCountries     []interface{} `json:"withheld_in_countries"`
+																				} `json:"legacy"`
+																				Location struct {
+																					Location string `json:"location"`
+																				} `json:"location"`
+																				MediaPermissions struct {
+																					CanMediaTag bool `json:"can_media_tag"`
+																				} `json:"media_permissions"`
+																				ParodyCommentaryFanLabel string `json:"parody_commentary_fan_label"`
+																				ProfileImageShape        string `json:"profile_image_shape"`
+																				Privacy                  struct {
+																					Protected bool `json:"protected"`
+																				} `json:"privacy"`
+																				RelationshipPerspectives struct {
+																					FollowedBy bool `json:"followed_by"`
+																					Following  bool `json:"following"`
+																				} `json:"relationship_perspectives"`
+																				TipjarSettings struct {
+																				} `json:"tipjar_settings"`
+																				Verification struct {
+																					Verified bool `json:"verified"`
+																				} `json:"verification"`
+																			} `json:"result"`
+																		} `json:"user_results"`
+																	} `json:"core"`
+																	UnmentionData struct {
+																	} `json:"unmention_data"`
+																	EditControl struct {
+																		EditTweetIds       []string `json:"edit_tweet_ids"`
+																		EditableUntilMsecs string   `json:"editable_until_msecs"`
+																		IsEditEligible     bool     `json:"is_edit_eligible"`
+																		EditsRemaining     string   `json:"edits_remaining"`
+																	} `json:"edit_control"`
+																	IsTranslatable bool `json:"is_translatable"`
+																	Views          struct {
+																		Count string `json:"count"`
+																		State string `json:"state"`
+																	} `json:"views"`
+																	Source    string `json:"source"`
+																	NoteTweet struct {
+																		IsExpandable     bool `json:"is_expandable"`
+																		NoteTweetResults struct {
+																			Result struct {
+																				Id        string `json:"id"`
+																				Text      string `json:"text"`
+																				EntitySet struct {
+																					Hashtags []interface{} `json:"hashtags"`
+																					Symbols  []struct {
+																						Indices []int  `json:"indices"`
+																						Text    string `json:"text"`
+																					} `json:"symbols"`
+																					Timestamps []struct {
+																						Indices []int  `json:"indices"`
+																						Seconds int    `json:"seconds"`
+																						Text    string `json:"text"`
+																					} `json:"timestamps"`
+																					Urls         []interface{} `json:"urls"`
+																					UserMentions []interface{} `json:"user_mentions"`
+																				} `json:"entity_set"`
+																			} `json:"result"`
+																		} `json:"note_tweet_results"`
+																	} `json:"note_tweet"`
+																	GrokAnalysisButton bool `json:"grok_analysis_button"`
+																	Legacy             struct {
+																		BookmarkCount     int    `json:"bookmark_count"`
+																		Bookmarked        bool   `json:"bookmarked"`
+																		CreatedAt         string `json:"created_at"`
+																		ConversationIdStr string `json:"conversation_id_str"`
+																		DisplayTextRange  []int  `json:"display_text_range"`
+																		Entities          struct {
+																			Hashtags []interface{} `json:"hashtags"`
+																			Media    []struct {
+																				DisplayUrl           string `json:"display_url"`
+																				ExpandedUrl          string `json:"expanded_url"`
+																				IdStr                string `json:"id_str"`
+																				Indices              []int  `json:"indices"`
+																				MediaKey             string `json:"media_key"`
+																				MediaUrlHttps        string `json:"media_url_https"`
+																				Type                 string `json:"type"`
+																				Url                  string `json:"url"`
+																				ExtMediaAvailability struct {
+																					Status string `json:"status"`
+																				} `json:"ext_media_availability"`
+																				Features struct {
+																					Large struct {
+																						Faces []struct {
+																							X int `json:"x"`
+																							Y int `json:"y"`
+																							H int `json:"h"`
+																							W int `json:"w"`
+																						} `json:"faces"`
+																					} `json:"large"`
+																					Medium struct {
+																						Faces []struct {
+																							X int `json:"x"`
+																							Y int `json:"y"`
+																							H int `json:"h"`
+																							W int `json:"w"`
+																						} `json:"faces"`
+																					} `json:"medium"`
+																					Small struct {
+																						Faces []struct {
+																							X int `json:"x"`
+																							Y int `json:"y"`
+																							H int `json:"h"`
+																							W int `json:"w"`
+																						} `json:"faces"`
+																					} `json:"small"`
+																					Orig struct {
+																						Faces []struct {
+																							X int `json:"x"`
+																							Y int `json:"y"`
+																							H int `json:"h"`
+																							W int `json:"w"`
+																						} `json:"faces"`
+																					} `json:"orig"`
+																				} `json:"features"`
+																				Sizes struct {
+																					Large struct {
+																						H      int    `json:"h"`
+																						W      int    `json:"w"`
+																						Resize string `json:"resize"`
+																					} `json:"large"`
+																					Medium struct {
+																						H      int    `json:"h"`
+																						W      int    `json:"w"`
+																						Resize string `json:"resize"`
+																					} `json:"medium"`
+																					Small struct {
+																						H      int    `json:"h"`
+																						W      int    `json:"w"`
+																						Resize string `json:"resize"`
+																					} `json:"small"`
+																					Thumb struct {
+																						H      int    `json:"h"`
+																						W      int    `json:"w"`
+																						Resize string `json:"resize"`
+																					} `json:"thumb"`
+																				} `json:"sizes"`
+																				OriginalInfo struct {
+																					Height     int `json:"height"`
+																					Width      int `json:"width"`
+																					FocusRects []struct {
+																						X int `json:"x"`
+																						Y int `json:"y"`
+																						W int `json:"w"`
+																						H int `json:"h"`
+																					} `json:"focus_rects"`
+																				} `json:"original_info"`
+																				AllowDownloadStatus struct {
+																					AllowDownload bool `json:"allow_download"`
+																				} `json:"allow_download_status"`
+																				MediaResults struct {
+																					Result struct {
+																						MediaKey string `json:"media_key"`
+																					} `json:"result"`
+																				} `json:"media_results"`
+																			} `json:"media"`
+																			Symbols []struct {
+																				Indices []int  `json:"indices"`
+																				Text    string `json:"text"`
+																			} `json:"symbols"`
+																			Timestamps   []interface{} `json:"timestamps"`
+																			Urls         []interface{} `json:"urls"`
+																			UserMentions []interface{} `json:"user_mentions"`
+																		} `json:"entities"`
+																		ExtendedEntities struct {
+																			Media []struct {
+																				DisplayUrl           string `json:"display_url"`
+																				ExpandedUrl          string `json:"expanded_url"`
+																				IdStr                string `json:"id_str"`
+																				Indices              []int  `json:"indices"`
+																				MediaKey             string `json:"media_key"`
+																				MediaUrlHttps        string `json:"media_url_https"`
+																				Type                 string `json:"type"`
+																				Url                  string `json:"url"`
+																				ExtMediaAvailability struct {
+																					Status string `json:"status"`
+																				} `json:"ext_media_availability"`
+																				Features struct {
+																					Large struct {
+																						Faces []struct {
+																							X int `json:"x"`
+																							Y int `json:"y"`
+																							H int `json:"h"`
+																							W int `json:"w"`
+																						} `json:"faces"`
+																					} `json:"large"`
+																					Medium struct {
+																						Faces []struct {
+																							X int `json:"x"`
+																							Y int `json:"y"`
+																							H int `json:"h"`
+																							W int `json:"w"`
+																						} `json:"faces"`
+																					} `json:"medium"`
+																					Small struct {
+																						Faces []struct {
+																							X int `json:"x"`
+																							Y int `json:"y"`
+																							H int `json:"h"`
+																							W int `json:"w"`
+																						} `json:"faces"`
+																					} `json:"small"`
+																					Orig struct {
+																						Faces []struct {
+																							X int `json:"x"`
+																							Y int `json:"y"`
+																							H int `json:"h"`
+																							W int `json:"w"`
+																						} `json:"faces"`
+																					} `json:"orig"`
+																				} `json:"features"`
+																				Sizes struct {
+																					Large struct {
+																						H      int    `json:"h"`
+																						W      int    `json:"w"`
+																						Resize string `json:"resize"`
+																					} `json:"large"`
+																					Medium struct {
+																						H      int    `json:"h"`
+																						W      int    `json:"w"`
+																						Resize string `json:"resize"`
+																					} `json:"medium"`
+																					Small struct {
+																						H      int    `json:"h"`
+																						W      int    `json:"w"`
+																						Resize string `json:"resize"`
+																					} `json:"small"`
+																					Thumb struct {
+																						H      int    `json:"h"`
+																						W      int    `json:"w"`
+																						Resize string `json:"resize"`
+																					} `json:"thumb"`
+																				} `json:"sizes"`
+																				OriginalInfo struct {
+																					Height     int `json:"height"`
+																					Width      int `json:"width"`
+																					FocusRects []struct {
+																						X int `json:"x"`
+																						Y int `json:"y"`
+																						W int `json:"w"`
+																						H int `json:"h"`
+																					} `json:"focus_rects"`
+																				} `json:"original_info"`
+																				AllowDownloadStatus struct {
+																					AllowDownload bool `json:"allow_download"`
+																				} `json:"allow_download_status"`
+																				MediaResults struct {
+																					Result struct {
+																						MediaKey string `json:"media_key"`
+																					} `json:"result"`
+																				} `json:"media_results"`
+																			} `json:"media"`
+																		} `json:"extended_entities"`
+																		FavoriteCount             int    `json:"favorite_count"`
+																		Favorited                 bool   `json:"favorited"`
+																		FullText                  string `json:"full_text"`
+																		IsQuoteStatus             bool   `json:"is_quote_status"`
+																		Lang                      string `json:"lang"`
+																		PossiblySensitive         bool   `json:"possibly_sensitive"`
+																		PossiblySensitiveEditable bool   `json:"possibly_sensitive_editable"`
+																		QuoteCount                int    `json:"quote_count"`
+																		ReplyCount                int    `json:"reply_count"`
+																		RetweetCount              int    `json:"retweet_count"`
+																		Retweeted                 bool   `json:"retweeted"`
+																		UserIdStr                 string `json:"user_id_str"`
+																		IdStr                     string `json:"id_str"`
+																	} `json:"legacy"`
+																} `json:"result"`
+															} `json:"quoted_status_result,omitempty"`
+															Legacy struct {
+																BookmarkCount     int    `json:"bookmark_count"`
+																Bookmarked        bool   `json:"bookmarked"`
+																CreatedAt         string `json:"created_at"`
+																ConversationIdStr string `json:"conversation_id_str"`
+																DisplayTextRange  []int  `json:"display_text_range"`
+																Entities          struct {
+																	Hashtags []struct {
+																		Indices []int  `json:"indices"`
+																		Text    string `json:"text"`
+																	} `json:"hashtags"`
+																	Media []struct {
+																		DisplayUrl           string `json:"display_url"`
+																		ExpandedUrl          string `json:"expanded_url"`
+																		IdStr                string `json:"id_str"`
+																		Indices              []int  `json:"indices"`
+																		MediaKey             string `json:"media_key"`
+																		MediaUrlHttps        string `json:"media_url_https"`
+																		Type                 string `json:"type"`
+																		Url                  string `json:"url"`
+																		ExtMediaAvailability struct {
+																			Status string `json:"status"`
+																		} `json:"ext_media_availability"`
+																		Features struct {
+																			Large struct {
+																				Faces []struct {
+																					X int `json:"x"`
+																					Y int `json:"y"`
+																					H int `json:"h"`
+																					W int `json:"w"`
+																				} `json:"faces"`
+																			} `json:"large"`
+																			Medium struct {
+																				Faces []struct {
+																					X int `json:"x"`
+																					Y int `json:"y"`
+																					H int `json:"h"`
+																					W int `json:"w"`
+																				} `json:"faces"`
+																			} `json:"medium"`
+																			Small struct {
+																				Faces []struct {
+																					X int `json:"x"`
+																					Y int `json:"y"`
+																					H int `json:"h"`
+																					W int `json:"w"`
+																				} `json:"faces"`
+																			} `json:"small"`
+																			Orig struct {
+																				Faces []struct {
+																					X int `json:"x"`
+																					Y int `json:"y"`
+																					H int `json:"h"`
+																					W int `json:"w"`
+																				} `json:"faces"`
+																			} `json:"orig"`
+																		} `json:"features"`
+																		Sizes struct {
+																			Large struct {
+																				H      int    `json:"h"`
+																				W      int    `json:"w"`
+																				Resize string `json:"resize"`
+																			} `json:"large"`
+																			Medium struct {
+																				H      int    `json:"h"`
+																				W      int    `json:"w"`
+																				Resize string `json:"resize"`
+																			} `json:"medium"`
+																			Small struct {
+																				H      int    `json:"h"`
+																				W      int    `json:"w"`
+																				Resize string `json:"resize"`
+																			} `json:"small"`
+																			Thumb struct {
+																				H      int    `json:"h"`
+																				W      int    `json:"w"`
+																				Resize string `json:"resize"`
+																			} `json:"thumb"`
+																		} `json:"sizes"`
+																		OriginalInfo struct {
+																			Height     int `json:"height"`
+																			Width      int `json:"width"`
+																			FocusRects []struct {
+																				X int `json:"x"`
+																				Y int `json:"y"`
+																				W int `json:"w"`
+																				H int `json:"h"`
+																			} `json:"focus_rects"`
+																		} `json:"original_info"`
+																		MediaResults struct {
+																			Result struct {
+																				MediaKey string `json:"media_key"`
+																			} `json:"result"`
+																		} `json:"media_results"`
+																		AllowDownloadStatus struct {
+																			AllowDownload bool `json:"allow_download"`
+																		} `json:"allow_download_status,omitempty"`
+																	} `json:"media"`
+																	Symbols []struct {
+																		Indices []int  `json:"indices"`
+																		Text    string `json:"text"`
+																	} `json:"symbols"`
+																	Timestamps   []interface{} `json:"timestamps"`
+																	Urls         []interface{} `json:"urls"`
+																	UserMentions []struct {
+																		IdStr      string `json:"id_str"`
+																		Name       string `json:"name"`
+																		ScreenName string `json:"screen_name"`
+																		Indices    []int  `json:"indices"`
+																	} `json:"user_mentions"`
+																} `json:"entities"`
+																ExtendedEntities struct {
+																	Media []struct {
+																		DisplayUrl           string `json:"display_url"`
+																		ExpandedUrl          string `json:"expanded_url"`
+																		IdStr                string `json:"id_str"`
+																		Indices              []int  `json:"indices"`
+																		MediaKey             string `json:"media_key"`
+																		MediaUrlHttps        string `json:"media_url_https"`
+																		Type                 string `json:"type"`
+																		Url                  string `json:"url"`
+																		ExtMediaAvailability struct {
+																			Status string `json:"status"`
+																		} `json:"ext_media_availability"`
+																		Features struct {
+																			Large struct {
+																				Faces []struct {
+																					X int `json:"x"`
+																					Y int `json:"y"`
+																					H int `json:"h"`
+																					W int `json:"w"`
+																				} `json:"faces"`
+																			} `json:"large"`
+																			Medium struct {
+																				Faces []struct {
+																					X int `json:"x"`
+																					Y int `json:"y"`
+																					H int `json:"h"`
+																					W int `json:"w"`
+																				} `json:"faces"`
+																			} `json:"medium"`
+																			Small struct {
+																				Faces []struct {
+																					X int `json:"x"`
+																					Y int `json:"y"`
+																					H int `json:"h"`
+																					W int `json:"w"`
+																				} `json:"faces"`
+																			} `json:"small"`
+																			Orig struct {
+																				Faces []struct {
+																					X int `json:"x"`
+																					Y int `json:"y"`
+																					H int `json:"h"`
+																					W int `json:"w"`
+																				} `json:"faces"`
+																			} `json:"orig"`
+																		} `json:"features"`
+																		Sizes struct {
+																			Large struct {
+																				H      int    `json:"h"`
+																				W      int    `json:"w"`
+																				Resize string `json:"resize"`
+																			} `json:"large"`
+																			Medium struct {
+																				H      int    `json:"h"`
+																				W      int    `json:"w"`
+																				Resize string `json:"resize"`
+																			} `json:"medium"`
+																			Small struct {
+																				H      int    `json:"h"`
+																				W      int    `json:"w"`
+																				Resize string `json:"resize"`
+																			} `json:"small"`
+																			Thumb struct {
+																				H      int    `json:"h"`
+																				W      int    `json:"w"`
+																				Resize string `json:"resize"`
+																			} `json:"thumb"`
+																		} `json:"sizes"`
+																		OriginalInfo struct {
+																			Height     int `json:"height"`
+																			Width      int `json:"width"`
+																			FocusRects []struct {
+																				X int `json:"x"`
+																				Y int `json:"y"`
+																				W int `json:"w"`
+																				H int `json:"h"`
+																			} `json:"focus_rects"`
+																		} `json:"original_info"`
+																		MediaResults struct {
+																			Result struct {
+																				MediaKey string `json:"media_key"`
+																			} `json:"result"`
+																		} `json:"media_results"`
+																		AllowDownloadStatus struct {
+																			AllowDownload bool `json:"allow_download"`
+																		} `json:"allow_download_status,omitempty"`
+																	} `json:"media"`
+																} `json:"extended_entities"`
+																FavoriteCount             int    `json:"favorite_count"`
+																Favorited                 bool   `json:"favorited"`
+																FullText                  string `json:"full_text"`
+																IsQuoteStatus             bool   `json:"is_quote_status"`
+																Lang                      string `json:"lang"`
+																PossiblySensitive         bool   `json:"possibly_sensitive"`
+																PossiblySensitiveEditable bool   `json:"possibly_sensitive_editable"`
+																Place                     struct {
+																	BoundingBox struct {
+																		Coordinates [][][]float64 `json:"coordinates"`
+																		Type        string        `json:"type"`
+																	} `json:"bounding_box"`
+																	Country     string `json:"country"`
+																	CountryCode string `json:"country_code"`
+																	FullName    string `json:"full_name"`
+																	Name        string `json:"name"`
+																	Id          string `json:"id"`
+																	PlaceType   string `json:"place_type"`
+																	Url         string `json:"url"`
+																} `json:"place,omitempty"`
+																QuoteCount            int    `json:"quote_count"`
+																QuotedStatusIdStr     string `json:"quoted_status_id_str,omitempty"`
+																QuotedStatusPermalink struct {
+																	Url      string `json:"url"`
+																	Expanded string `json:"expanded"`
+																	Display  string `json:"display"`
+																} `json:"quoted_status_permalink,omitempty"`
+																ReplyCount           int    `json:"reply_count"`
+																RetweetCount         int    `json:"retweet_count"`
+																Retweeted            bool   `json:"retweeted"`
+																UserIdStr            string `json:"user_id_str"`
+																IdStr                string `json:"id_str"`
+																InReplyToScreenName  string `json:"in_reply_to_screen_name,omitempty"`
+																InReplyToStatusIdStr string `json:"in_reply_to_status_id_str,omitempty"`
+																InReplyToUserIdStr   string `json:"in_reply_to_user_id_str,omitempty"`
+															} `json:"legacy"`
+														} `json:"result"`
+													} `json:"tweet_results"`
+												} `json:"target_objects"`
+												FromUsers []struct {
+													Typename    string `json:"__typename"`
+													UserResults struct {
+														Result struct {
+															Typename                   string `json:"__typename"`
+															Id                         string `json:"id"`
+															RestId                     string `json:"rest_id"`
+															AffiliatesHighlightedLabel struct {
+															} `json:"affiliates_highlighted_label"`
+															Avatar struct {
+																ImageUrl string `json:"image_url"`
+															} `json:"avatar"`
+															Core struct {
+																CreatedAt  string `json:"created_at"`
+																Name       string `json:"name"`
+																ScreenName string `json:"screen_name"`
+															} `json:"core"`
+															DmPermissions struct {
+																CanDm bool `json:"can_dm"`
+															} `json:"dm_permissions"`
+															HasGraduatedAccess bool `json:"has_graduated_access"`
+															IsBlueVerified     bool `json:"is_blue_verified"`
+															Legacy             struct {
+																DefaultProfile      bool   `json:"default_profile"`
+																DefaultProfileImage bool   `json:"default_profile_image"`
+																Description         string `json:"description"`
+																Entities            struct {
+																	Description struct {
+																		Urls []interface{} `json:"urls"`
+																	} `json:"description"`
+																	Url struct {
+																		Urls []struct {
+																			DisplayUrl  string `json:"display_url"`
+																			ExpandedUrl string `json:"expanded_url"`
+																			Url         string `json:"url"`
+																			Indices     []int  `json:"indices"`
+																		} `json:"urls"`
+																	} `json:"url,omitempty"`
+																} `json:"entities"`
+																FastFollowersCount      int           `json:"fast_followers_count"`
+																FavouritesCount         int           `json:"favourites_count"`
+																FollowersCount          int           `json:"followers_count"`
+																FriendsCount            int           `json:"friends_count"`
+																HasCustomTimelines      bool          `json:"has_custom_timelines"`
+																IsTranslator            bool          `json:"is_translator"`
+																ListedCount             int           `json:"listed_count"`
+																MediaCount              int           `json:"media_count"`
+																NormalFollowersCount    int           `json:"normal_followers_count"`
+																PinnedTweetIdsStr       []string      `json:"pinned_tweet_ids_str"`
+																PossiblySensitive       bool          `json:"possibly_sensitive"`
+																ProfileBannerUrl        string        `json:"profile_banner_url"`
+																ProfileInterstitialType string        `json:"profile_interstitial_type"`
+																StatusesCount           int           `json:"statuses_count"`
+																TranslatorType          string        `json:"translator_type"`
+																Url                     string        `json:"url,omitempty"`
+																WantRetweets            bool          `json:"want_retweets"`
+																WithheldInCountries     []interface{} `json:"withheld_in_countries"`
+															} `json:"legacy"`
+															Location struct {
+																Location string `json:"location"`
+															} `json:"location"`
+															MediaPermissions struct {
+																CanMediaTag bool `json:"can_media_tag"`
+															} `json:"media_permissions"`
+															ParodyCommentaryFanLabel string `json:"parody_commentary_fan_label"`
+															ProfileImageShape        string `json:"profile_image_shape"`
+															Privacy                  struct {
+																Protected bool `json:"protected"`
+															} `json:"privacy"`
+															RelationshipPerspectives struct {
+																FollowedBy bool `json:"followed_by"`
+																Following  bool `json:"following"`
+															} `json:"relationship_perspectives"`
+															TipjarSettings struct {
+																IsEnabled bool `json:"is_enabled,omitempty"`
+															} `json:"tipjar_settings"`
+															Verification struct {
+																Verified bool `json:"verified"`
+															} `json:"verification"`
+														} `json:"result"`
+													} `json:"user_results"`
+												} `json:"from_users"`
+												ShowAllLinkText string `json:"show_all_link_text,omitempty"`
+											} `json:"template,omitempty"`
+											TimestampMs time.Time `json:"timestamp_ms,omitempty"`
 										} `json:"itemContent,omitempty"`
 										ClientEventInfo struct {
 											Component string `json:"component"`

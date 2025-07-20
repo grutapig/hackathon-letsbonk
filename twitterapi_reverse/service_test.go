@@ -13,7 +13,7 @@ func TestTwitterReverseService_GetTweetDetail(t *testing.T) {
 	t.Skip()
 	godotenv.Load("../.dev.env")
 
-	curlExample := `curl 'https://x.com/i/api/graphql/-0WTL1e9Pij-JWAF5ztCCA/TweetDetail' -H 'authorization: Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA' -H 'x-csrf-token: 51dba875c98111e3adb18449d1812e64bdb0ad803a9d55db7b7538e5bf4a9582d67cad7c709beacb40af100c47f3c2740525cd4116e89f6d90bb86a0858fde79c5bcc2d9c505455b7e992c9347f2132a' -H 'Cookie: auth_token=0323aebf3f717be2f83e09aa74af7959bb0cc93d; ct0=51dba875c98111e3adb18449d1812e64bdb0ad803a9d55db7b7538e5bf4a9582d67cad7c709beacb40af100c47f3c2740525cd4116e89f6d90bb86a0858fde79c5bcc2d9c505455b7e992c9347f2132a'`
+	curlExample := `curl 'https://x.com/i/api/graphql/-0WTL1e9Pij-JWAF5ztCCA/TweetDetail' -H 'authorization: Bearer AAAAAAAAAAAAAAAFA33AGWWjCpTnA' -H 'x-csrf-token: 5175c98111e3adb18449d1812e64bdb0ad803a9d55db7b7538e5bf4a9582d67cad7c709beacb40af100c47f3c2740525cd4116e89f6d90bb86a0858fde79c5bcc2d9c505455b7e9a' -H 'Cookie: auth_token=0323aaf7959bb0cc93d; ct0=51dba875c98111e3adb18449d1812e64bdb0ad803a9d55db7b7538e5bf4a9582d67cad7c709beacb40af100c47f3c455b7e992c9347f2132a'`
 
 	auth, err := ParseFromCurl(curlExample)
 	if err != nil {
@@ -51,9 +51,9 @@ func TestTwitterReverseService_GetCommunityTweets(t *testing.T) {
 	godotenv.Load("../.dev.env")
 
 	headers := map[string]string{
-		"authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
-		"x-csrf-token":  "07169b33678da5112c0a1988e3b0423b1cbe32e39bbc9764b7234f190fb5838d5ec1aefa29df3285bebbbb9fd2f9177c4a6a0f4783e45e32d8bd9aeafed5b3a531eb57a52829ea1f174d3e5c313ffb35",
-		"cookie":        "auth_token=47ec273f768b8b4cc97d694a02b632b2d30c95a2; ct0=07169b33678da5112c0a1988e3b0423b1cbe32e39bbc9764b7234f190fb5838d5ec1aefa29df3285bebbbb9fd2f9177c4a6a0f4783e45e32d8bd9aeafed5b3a531eb57a52829ea1f174d3e5c313ffb35",
+		"authorization": "Bearer AAAAAAjhLTvJu4FA33AGWWjCpTnA",
+		"x-csrf-token":  "07169b33678da5112c0a1988e3b0423b1cbe32e3983e45e32d8bd9aeafed5b3a531eb57a52829ea1f174d3e5c313ffb35",
+		"cookie":        "auth_token=47e632b2d30c95a2; ct0=07169b33678da3285bebbbb9fd2f9177c4a6a0f4783e45e32d9ea1f174d3e5c313ffb35",
 	}
 
 	auth, err := ParseFromHeaders(headers)

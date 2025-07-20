@@ -102,7 +102,7 @@ func (t *TwitterBotService) initializeKnownTweets() error {
 
 	for _, tweet := range tweets {
 		t.knownTweets[tweet.Id] = true
-		log.Println(tweet.CreatedAt, tweet.Id, tweet.Text, tweet.Author.UserName)
+		log.Println(tweet.CreatedAt, tweet.Id, tweet.Text, tweet.Author.UserName, tweet.InReplyToId)
 	}
 
 	log.Printf("Initialized with %d known tweets", len(t.knownTweets))
@@ -119,7 +119,7 @@ func (t *TwitterBotService) checkForNewTweets() error {
 	newTweets := t.findNewTweets(tweets)
 
 	for _, tweet := range newTweets {
-		log.Printf("Found new tweet from @%s: %s", tweet.Author.UserName, tweet.Text)
+		log.Printf("Found new tweet from @%s: %s, reply: %s, %d", tweet.Author.UserName, tweet.Text, tweet.InReplyToId, tweet.ReplyCount)
 		if err := t.respondToTweet(tweet); err != nil {
 			log.Printf("Error responding to tweet %s: %v", tweet.Id, err)
 		}
@@ -189,9 +189,11 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 	var cacheData string
 	var repliedMessage string
 	var isMessageEvaluation bool
+	var mentionedUser string
 	if len(mentionedUsers) > 0 {
 		cacheData = t.prepareCacheDataForClaude(mentionedUsers)
 		isMessageEvaluation = false
+		mentionedUser = mentionedUsers[0]
 	} else if tweet.InReplyToId != "" {
 		repliedToTweet, repliedToAuthor, err := t.getRepliedToTweetAndAuthor(tweet.InReplyToId)
 		if err != nil {
@@ -200,9 +202,10 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 			cacheData = t.prepareCacheDataForClaude([]string{repliedToAuthor})
 			repliedMessage = repliedToTweet
 			isMessageEvaluation = true
+			mentionedUser = repliedToAuthor
 		}
 	} else {
-		log.Printf("nothing asked: %s (%s)\n", tweet.Text, tweet.Author.UserName)
+		log.Printf("nothing asked: %s (%s), reply: %s\n", tweet.Text, tweet.Author.UserName, tweet.InReplyToId)
 		return nil
 	}
 
@@ -211,7 +214,7 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 		log.Printf("Error generating Claude response: %v", err)
 		responseText = fmt.Sprintf("Hello @%s! Thank you for mentioning me.", tweet.Author.UserName)
 	}
-
+	responseText += "\nFull analyze here (DIOR): https://t.me/GrutaDarkBot?start=cache_" + mentionedUser
 	responseText = t.limitResponseLength(responseText, 380)
 
 	log.Println("Final response:", responseText)
@@ -321,10 +324,10 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 	var userPrompt string
 
 	if isMessageEvaluation {
-		systemPrompt = "Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 characters). Do not respond on behalf of the community."
+		systemPrompt = "Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet. Say about community $DARK in third person style"
 		userPrompt = fmt.Sprintf("Tagger's message: %s\n\nMessage to evaluate: %s\n\nUser data:\n%s", originalMessage, repliedMessage, cacheData)
 	} else {
-		systemPrompt = "Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet (180 characters). Do not respond on behalf of the community."
+		systemPrompt = "Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet. Say about community $DARK in third person style"
 		userPrompt = fmt.Sprintf("Original message: %s\n\nCache information:\n%s", originalMessage, cacheData)
 	}
 

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"time"
 )
@@ -335,6 +336,7 @@ func (s *TwitterReverseService) GetNotifications() (*NotificationsResponse, erro
 	if err != nil {
 		return nil, fmt.Errorf("error on make request GetNotifications: %s", err)
 	}
+	os.WriteFile("qwe.json", body, 0655)
 	notificationsResponse := &NotificationsResponse{}
 	err = json.Unmarshal(body, notificationsResponse)
 	if err != nil {
@@ -355,11 +357,15 @@ func (s *TwitterReverseService) GetNotificationsSimple() ([]SimpleTweet, error) 
 				if err != nil {
 					log.Println("error on parse date of tweet: ", err)
 				}
+				replyToStatusIdStr := entry.Content.ItemContent.TweetResults.Result.Legacy.InReplyToStatusIdStr
+				if replyToStatusIdStr == "" {
+					replyToStatusIdStr = entry.Content.ItemContent.TweetResults.Result.Legacy.QuotedStatusIdStr
+				}
 				tweets = append(tweets, SimpleTweet{
 					TweetID:      entry.Content.ItemContent.TweetResults.Result.Legacy.IdStr,
 					Text:         entry.Content.ItemContent.TweetResults.Result.Legacy.FullText,
 					CreatedAt:    timeConverted,
-					ReplyToID:    entry.Content.ItemContent.TweetResults.Result.Legacy.InReplyToStatusIdStr,
+					ReplyToID:    replyToStatusIdStr,
 					RepliesCount: entry.Content.ItemContent.TweetResults.Result.Legacy.ReplyCount,
 					Author: SimpleUser{
 						ID:       entry.Content.ItemContent.TweetResults.Result.Legacy.UserIdStr,
