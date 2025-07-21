@@ -83,7 +83,7 @@ func (t *TwitterBotService) StartMonitoring(ctx context.Context) error {
 			log.Println("Monitoring stopped")
 			return ctx.Err()
 		case <-ticker.C:
-			log.Println("checking...")
+			log.Println("twitter bot checking...")
 			if err := t.checkForNewTweets(); err != nil {
 				log.Printf("Error checking for new tweets: %v", err)
 			}
@@ -105,7 +105,7 @@ func (t *TwitterBotService) initializeKnownTweets() error {
 		log.Println(tweet.CreatedAt, tweet.Id, tweet.Text, tweet.Author.UserName, tweet.InReplyToId)
 	}
 
-	log.Printf("Initialized with %d known tweets", len(t.knownTweets))
+	log.Printf("twitter bot Initialized with %d known tweets", len(t.knownTweets))
 	return nil
 }
 
@@ -145,6 +145,7 @@ func (t *TwitterBotService) getNewMentions() ([]twitterapi.Tweet, error) {
 				}
 				tweets = append(tweets, tweet)
 			}
+			log.Printf("Success get from reverse: %d", len(tweets))
 			return tweets, nil
 		}
 		log.Printf("Reverse service failed, falling back to advanced search: %v", err)
@@ -209,13 +210,12 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 		return nil
 	}
 
-	responseText, err := t.generateClaudeResponse(tweet.Text, repliedMessage, cacheData, isMessageEvaluation)
+	responseText, err := t.generateClaudeResponse(tweet.Text, repliedMessage, cacheData, isMessageEvaluation, mentionedUser)
 	if err != nil {
 		log.Printf("Error generating Claude response: %v", err)
 		responseText = fmt.Sprintf("Hello @%s! Thank you for mentioning me.", tweet.Author.UserName)
 	}
-	responseText += "\nFull analyze here (DIOR): https://t.me/GrutaDarkBot?start=cache_" + mentionedUser
-	responseText = t.limitResponseLength(responseText, 380)
+	responseText += "\nt.me/GrutaDarkBot?start=cache_" + mentionedUser
 
 	log.Println("Final response:", responseText)
 	postRequest := twitterapi.PostTweetRequest{
@@ -315,7 +315,7 @@ func (t *TwitterBotService) prepareCacheDataForClaude(usernames []string) string
 	return string(jsonData)
 }
 
-func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessage string, cacheData string, isMessageEvaluation bool) (string, error) {
+func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessage, cacheData string, isMessageEvaluation bool, mentionedUser string) (string, error) {
 	if t.claudeAPI == nil {
 		return "", fmt.Errorf("Claude API not initialized")
 	}
@@ -324,11 +324,11 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 	var userPrompt string
 
 	if isMessageEvaluation {
-		systemPrompt = "Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet. Say about community $DARK in third person style"
-		userPrompt = fmt.Sprintf("Tagger's message: %s\n\nMessage to evaluate: %s\n\nUser data:\n%s", originalMessage, repliedMessage, cacheData)
+		systemPrompt = "Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 symbols)."
+		userPrompt = fmt.Sprintf("Tagger's message: '%s'\n\nMessage to evaluate: '%s'\n\nAuthor of message and user to analyze: '%s'\nUser data:\n%s", originalMessage, repliedMessage, mentionedUser, cacheData)
 	} else {
-		systemPrompt = "Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet. Say about community $DARK in third person style"
-		userPrompt = fmt.Sprintf("Original message: %s\n\nCache information:\n%s", originalMessage, cacheData)
+		systemPrompt = "Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet (180 symbols)."
+		userPrompt = fmt.Sprintf("Original message: '%s'\nuser to analyze: '%s'\nCache information:\n%s", originalMessage, mentionedUser, cacheData)
 	}
 
 	request := ClaudeMessages{
@@ -336,9 +336,12 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 			Role:    ROLE_USER,
 			Content: userPrompt,
 		},
+		{
+			Role:    ROLE_USER,
+			Content: "analyze and give me short finished answer to post tweet one sentence.",
+		},
 	}
-	log.Printf("request to claude: %s\n", userPrompt)
-	t.claudeAPI.maxTokens = 240 / 4
+	log.Printf("request to claude: %s, system: %s\n", userPrompt, systemPrompt)
 	response, err := t.claudeAPI.SendMessage(request, systemPrompt)
 	if err != nil {
 		return "", err

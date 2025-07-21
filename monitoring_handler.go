@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/grutapig/hackaton/twitterapi"
 	"github.com/grutapig/hackaton/twitterapi_reverse"
 	"log"
@@ -439,7 +438,7 @@ func convertSimpleTweetsToTweets(simpleTweets []twitterapi_reverse.SimpleTweet) 
 				Name:     simpleTweet.Author.Name,
 			},
 		}
-		fmt.Println("tweet:", tweet.Id, tweet.Text, tweet.Author.Id, tweet.Author.UserName, tweet.Author.Name, "reply", tweet.ReplyCount)
+		//fmt.Println("tweet:", tweet.Id, tweet.Text, tweet.Author.Id, tweet.Author.UserName, tweet.Author.Name, "reply", tweet.ReplyCount)
 		tweets = append(tweets, tweet)
 	}
 
