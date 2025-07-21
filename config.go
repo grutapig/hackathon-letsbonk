@@ -22,6 +22,8 @@ const ENV_TWITTER_REVERSE_ENABLED = "twitter_reverse_enabled"
 const ENV_TWITTER_AUTH = "twitter_auth"
 const ENV_TWITTER_BOT_TAG = "twitter_bot_tag"
 
+const ENV_CHAT_IDS_FILEPATH = "chat_ids_file_path"
+
 const TWEET_SOURCE_COMMUNITY = "community"
 const TWEET_SOURCE_TICKER_SEARCH = "ticker_search"
 const TWEET_SOURCE_CONTEXT = "context"

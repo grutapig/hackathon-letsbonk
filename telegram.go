@@ -65,7 +65,7 @@ func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, f
 		analysisChannel: analysisChannel,
 	}
 	//Init chatIds from file if exists
-	data, err := os.ReadFile(CHAT_IDS_STORAGE_PATH)
+	data, err := os.ReadFile(os.Getenv(ENV_CHAT_IDS_FILEPATH))
 	if err == nil {
 		chatIDStrings := strings.Split(string(data), "\n")
 		for _, chatIDStr := range chatIDStrings {
@@ -103,7 +103,7 @@ func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, f
 			for chatId := range service.chatIDs {
 				chatList = append(chatList, strconv.Itoa(int(chatId)))
 			}
-			err = os.WriteFile(CHAT_IDS_STORAGE_PATH, []byte(strings.Join(chatList, "\n")), 0655)
+			err = os.WriteFile(os.Getenv(ENV_CHAT_IDS_FILEPATH), []byte(strings.Join(chatList, "\n")), 0655)
 			if err != nil {
 				log.Println("cannot write file with notification users list.", err)
 			}
