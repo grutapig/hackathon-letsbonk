@@ -168,20 +168,22 @@ func (t *TelegramService) processUpdates() error {
 	}
 
 	for _, update := range updates {
-		go func(update TelegramUpdate) {
-			t.lastOffset = update.UpdateID + 1
+		t.lastOffset = update.UpdateID + 1
 
+		go func(update TelegramUpdate) {
 			chatID := update.Message.Chat.ID
 			t.chatMutex.Lock()
-			if !t.chatIDs[chatID] {
+			isNewChat := !t.chatIDs[chatID]
+			if isNewChat {
 				t.chatIDs[chatID] = true
 				log.Printf("New Telegram chat registered: %d (from: %s)", chatID, update.Message.From.FirstName)
-
-				info := fmt.Sprintf("✅ Chat registered!\nChat ID: %d\nUser: %s %s\nUsername: @%s", chatID, update.Message.From.FirstName, update.Message.From.LastName, update.Message.From.Username)
-
-				go t.SendMessage(chatID, info)
 			}
 			t.chatMutex.Unlock()
+
+			if isNewChat {
+				info := fmt.Sprintf("✅ Chat registered!\nChat ID: %d\nUser: %s %s\nUsername: @%s", chatID, update.Message.From.FirstName, update.Message.From.LastName, update.Message.From.Username)
+				go t.SendMessage(chatID, info)
+			}
 
 			if update.Message.Text != "" {
 				text := strings.TrimSpace(update.Message.Text)

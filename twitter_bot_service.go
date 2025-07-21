@@ -333,15 +333,18 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 	var systemPrompt string
 	var userPrompt string
 
+	systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. At current time you work only with $DARK community, but in future will expand. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities, but admin users list can asks about anything. Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 symbols). Always mark as 'presumably' on your decisions. If author is from admin list, you not required to analyze somebody(if he not asked), you can just communicate with him."
 	if isMessageEvaluation {
-		systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. At current time you work only with $DARK community, but in future will expand. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities, but admin users list can asks about anything. Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 symbols). If user is FUDer, add remark presumably."
 		userPrompt = fmt.Sprintf("Tagger's message: '%s'\n\nMessage to evaluate: '%s'\n\nAuthor of message and user to analyze: '%s'\nUser data:\n%s", originalMessage, repliedMessage, mentionedUser, cacheData)
 	} else {
-		systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. At current time you work only with $DARK community, but in future will expand. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities, but admin users list can asks about anything. Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet (180 symbols). If user is FUDer, add remark presumably."
-		userPrompt = fmt.Sprintf("Original message: '%s'\nuser to analyze: '%s'\nUser data:\n%s", originalMessage, mentionedUser, cacheData)
+		userPrompt = fmt.Sprintf("Original message: '%s'\nmentioned user: '%s'\nUser data:\n%s", originalMessage, mentionedUser, cacheData)
 	}
 
 	request := ClaudeMessages{
+		{
+			Role:    ROLE_USER,
+			Content: userPrompt,
+		},
 		{
 			Role:    ROLE_USER,
 			Content: fmt.Sprintf("admins user list: %s", TWEET_POST_ADMIN_USERS),
@@ -352,11 +355,11 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 		},
 		{
 			Role:    ROLE_USER,
-			Content: userPrompt,
+			Content: originalMessage,
 		},
 		{
 			Role:    ROLE_USER,
-			Content: "analyze and give me short finished answer to post tweet one sentence.",
+			Content: "give me short finished answer to post tweet one sentence.",
 		},
 	}
 	log.Printf("request to claude: %s, system: %s\n", userPrompt, systemPrompt)
