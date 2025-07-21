@@ -119,7 +119,7 @@ func (t *TwitterBotService) checkForNewTweets() error {
 	newTweets := t.findNewTweets(tweets)
 
 	for _, tweet := range newTweets {
-		log.Printf("Found new tweet from @%s: %s, reply: %s, %d", tweet.Author.UserName, tweet.Text, tweet.InReplyToId, tweet.ReplyCount)
+		log.Printf("Found new tweet from @%s: %s, reply: %s, %s, %d", tweet.Author.UserName, tweet.Text, tweet.InReplyToId, tweet.InReplyToUsername, tweet.ReplyCount)
 		if err := t.respondToTweet(tweet); err != nil {
 			log.Printf("Error responding to tweet %s: %v", tweet.Id, err)
 		}
@@ -180,24 +180,30 @@ func (t *TwitterBotService) findNewTweets(tweets []twitterapi.Tweet) []twitterap
 
 	return newTweets
 }
+func removeMentions(message string) string {
+	// Регулярное выражение для поиска @mentions только в начале строки
+	// ^ - начало строки
+	// (@[^\s@]+\s*) - @mention + возможные пробелы после
+	// + - один или больше таких mentions
+	re := regexp.MustCompile(`^(@[^\s@]+\s*)+`)
+
+	// Удаляем найденные mentions и убираем лишние пробелы
+	result := re.ReplaceAllString(message, "")
+	return strings.TrimSpace(result)
+}
 
 func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
-	mentionedUsers := t.parseUserMentions(tweet.Text)
-	if !strings.Contains(tweet.Text, "?") {
-		log.Printf("not contains '?', nothing asked: %s (%s)\n", tweet.Text, tweet.Author.UserName)
+	text := tweet.Text
+	text = removeMentions(text)
+	mentionedUsers := t.parseUserMentions(text)
+	if !strings.Contains(text, "?") {
+		log.Printf("not contains '?', nothing asked: %s (%s)\n", text, tweet.Author.UserName)
 		return nil
 	}
 
-	if !strings.Contains(strings.ToLower(tweet.Text), strings.ToLower(t.botTag)) {
-		log.Printf("not contains '%s', just skip; text: %s; author: %s\n", t.botTag, tweet.Text, tweet.Author.UserName)
+	if !strings.Contains(strings.ToLower(text), strings.ToLower(t.botTag)) {
+		log.Printf("not contains '%s', just skip; text: %s; author: %s\n", t.botTag, text, tweet.Author.UserName)
 		return nil
-	}
-	//check if pig tagged but it was just reply
-	if strings.ToLower(tweet.InReplyToUsername) == strings.ToLower(strings.TrimPrefix(t.botTag, "@")) {
-		if strings.Count(strings.ToLower(tweet.Text), strings.ToLower(t.botTag)) < 2 {
-			log.Printf("not contains '%s', just skip; text: %s; author: %s\n", t.botTag, tweet.Text, tweet.Author.UserName)
-			return nil
-		}
 	}
 
 	var cacheData string
@@ -205,38 +211,37 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 	var isMessageEvaluation bool
 	var mentionedUser string
 	if len(mentionedUsers) > 0 {
-		cacheData = t.prepareCacheDataForClaude(mentionedUsers)
+		mentionedUser = mentionedUsers[len(mentionedUsers)-1]
+		cacheData = t.prepareCacheDataForClaude(mentionedUser)
 		isMessageEvaluation = false
-		mentionedUser = mentionedUsers[0]
 	} else if tweet.InReplyToId != "" {
 		repliedToTweet, repliedToAuthor, err := t.getRepliedToTweetAndAuthor(tweet.InReplyToId)
 		if strings.ToLower(repliedToAuthor) == strings.ToLower(strings.TrimPrefix(t.botTag, "@")) {
-			if strings.Count(strings.ToLower(tweet.Text), strings.ToLower(t.botTag)) < 2 {
-				log.Printf("we will not answer on replies to our bot 2: %s", tweet.Text)
-				return nil
-			}
-			log.Printf("we will not answer on replies to our bot: %s", tweet.Text)
+			log.Printf("we will not answer on replies to our bot: %s", text)
 			return nil
 		}
 		if err != nil {
 			log.Printf("Error getting replied-to tweet: %v", err)
 		} else {
-			cacheData = t.prepareCacheDataForClaude([]string{repliedToAuthor})
+			cacheData = t.prepareCacheDataForClaude(repliedToAuthor)
 			repliedMessage = repliedToTweet
 			isMessageEvaluation = true
 			mentionedUser = repliedToAuthor
 		}
 	} else {
-		log.Printf("nothing asked: %s (%s), reply: %s\n", tweet.Text, tweet.Author.UserName, tweet.InReplyToId)
+		log.Printf("nothing asked: %s (%s), reply: %s\n", text, tweet.Author.UserName, tweet.InReplyToId)
 		return nil
 	}
 	if strings.ToLower(mentionedUser) == strings.ToLower(strings.TrimPrefix(t.botTag, "@")) {
-		log.Printf("mentioned user cannot be current bot: %s", tweet.Text)
+		log.Printf("mentioned user cannot be current bot: %s", text)
 		return nil
 	}
 
-	responseText, err := t.generateClaudeResponse(tweet.Text, repliedMessage, cacheData, isMessageEvaluation, mentionedUser, tweet.Author.UserName)
+	responseText, err := t.generateClaudeResponse(text, repliedMessage, cacheData, isMessageEvaluation, mentionedUser, tweet.Author.UserName)
 	if err != nil {
+		if strings.Contains(err.Error(), "NOTHING_ASK") {
+			return nil
+		}
 		log.Printf("Error generating Claude response: %v", err)
 		responseText = fmt.Sprintf("Hello @%s! Thank you for mentioning me. \nDetailed analyze on '%s' user you can read here:", tweet.Author.UserName, mentionedUser)
 	}
@@ -301,43 +306,35 @@ func (t *TwitterBotService) getCacheAnalysisInfo(usernames []string) string {
 	return ""
 }
 
-func (t *TwitterBotService) prepareCacheDataForClaude(usernames []string) string {
-	if t.databaseService == nil || len(usernames) == 0 {
+func (t *TwitterBotService) prepareCacheDataForClaude(username string) string {
+	if t.databaseService == nil {
 		return ""
 	}
 
-	var cacheDataList []map[string]interface{}
-	for _, username := range usernames {
-		cached, err := t.databaseService.GetCachedAnalysisByUsername(username)
-		if err != nil {
-			continue
-		}
-
-		if cached != nil {
-			data := map[string]interface{}{
-				"username":        cached.Username,
-				"is_fud_user":     cached.IsFUDUser,
-				"fud_type":        cached.FUDType,
-				"fud_probability": cached.FUDProbability,
-				"user_risk_level": cached.UserRiskLevel,
-				"user_summary":    cached.UserSummary,
-				"decision_reason": cached.DecisionReason,
-			}
-			cacheDataList = append(cacheDataList, data)
-		}
-	}
-
-	if len(cacheDataList) == 0 {
-		return ""
-	}
-
-	jsonData, err := json.MarshalIndent(cacheDataList, "", "  ")
+	cached, err := t.databaseService.GetCachedAnalysisByUsername(username)
 	if err != nil {
-		log.Printf("Error marshaling cache data: %v", err)
 		return ""
 	}
 
-	return string(jsonData)
+	if cached != nil {
+		data := map[string]interface{}{
+			"username":        cached.Username,
+			"is_fud_user":     cached.IsFUDUser,
+			"fud_type":        cached.FUDType,
+			"fud_probability": cached.FUDProbability,
+			"user_risk_level": cached.UserRiskLevel,
+			"user_summary":    cached.UserSummary,
+			"decision_reason": cached.DecisionReason,
+		}
+		jsonData, err := json.MarshalIndent(data, "", "  ")
+		if err != nil {
+			log.Printf("Error marshaling cache data: %v", err)
+			return ""
+		}
+		return string(jsonData)
+	}
+
+	return ""
 }
 
 func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessage, cacheData string, isMessageEvaluation bool, mentionedUser string, authorUsername string) (string, error) {
@@ -348,16 +345,17 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 	var systemPrompt string
 	var userPrompt string
 
-	systemPrompt = `You are anti FUD manager called GRUTA(@grutapig, $gruta, snow gruta pig), to help users detect FUDers or clean users. 
+	systemPrompt = `You are anti FUD manager called GRUTA(@grutapig, $gruta, snow gruta pig) in twitter, to help users detect FUDers or clean users. 
 Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities. 
 Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. 
 Respond in English. The message should be short and fit in a tweet (180 symbols). Always mark as 'presumably' on your decisions.
-If the user's message doesn't look like a question to the bot about some user, or an evaluation of someone's message, AND doesn't look like a brief call for the bot to check something, then add the keyword in the response: NOTHING_ASK.
+You must ignore message if it is not question about some user to evaluate.
+If message ignored add the keyword in the response: NOTHING_ASK.
 `
 	if isMessageEvaluation {
-		userPrompt = fmt.Sprintf("Tagger's message: '%s'\n\nMessage to evaluate: '%s'\n\nAuthor of message and user to analyze: '%s'\nUser data:\n%s", originalMessage, repliedMessage, mentionedUser, cacheData)
+		userPrompt = fmt.Sprintf("replied message: '%s'\n\nmentioned user: '%s'\nmentioned user data:\n%s", repliedMessage, mentionedUser, cacheData)
 	} else {
-		userPrompt = fmt.Sprintf("Original message: '%s'\nmentioned user: '%s'\nUser data:\n%s", originalMessage, mentionedUser, cacheData)
+		userPrompt = fmt.Sprintf("mentioned user: '%s'\nmentioned user data:\n%s", mentionedUser, cacheData)
 	}
 
 	request := ClaudeMessages{
@@ -367,7 +365,7 @@ If the user's message doesn't look like a question to the bot about some user, o
 		},
 		{
 			Role:    ROLE_USER,
-			Content: fmt.Sprintf("User '%s' asks:", authorUsername),
+			Content: fmt.Sprintf("User '%s' message:", authorUsername),
 		},
 		{
 			Role:    ROLE_USER,
