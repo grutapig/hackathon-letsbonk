@@ -348,7 +348,12 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 	var systemPrompt string
 	var userPrompt string
 
-	systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities, but admin users list can asks about anything. Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 symbols). Always mark as 'presumably' on your decisions."
+	systemPrompt = `You are anti FUD manager called GRUTA(@grutapig, $gruta, snow gruta pig), to help users detect FUDers or clean users. 
+Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities. 
+Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. 
+Respond in English. The message should be short and fit in a tweet (180 symbols). Always mark as 'presumably' on your decisions.
+If the user's message doesn't look like a question to the bot about some user, or an evaluation of someone's message, AND doesn't look like a brief call for the bot to check something, then add the keyword in the response: NOTHING_ASK.
+`
 	if isMessageEvaluation {
 		userPrompt = fmt.Sprintf("Tagger's message: '%s'\n\nMessage to evaluate: '%s'\n\nAuthor of message and user to analyze: '%s'\nUser data:\n%s", originalMessage, repliedMessage, mentionedUser, cacheData)
 	} else {
@@ -385,6 +390,9 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 
 	if len(response.Content) > 0 {
 		log.Printf("response for claude: %s", response.Content[0].Text)
+		if strings.Contains(response.Content[0].Text, "NOTHING_ASK") {
+			return "", fmt.Errorf("NOTHING_ASK keyword found in response: %s", response.Content[0].Text)
+		}
 		return response.Content[0].Text, nil
 	}
 
