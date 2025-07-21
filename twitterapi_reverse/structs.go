@@ -3,12 +3,13 @@ package twitterapi_reverse
 import "time"
 
 type SimpleTweet struct {
-	TweetID      string     `json:"tweet_id"`
-	Text         string     `json:"text"`
-	CreatedAt    time.Time  `json:"created_at"`
-	ReplyToID    string     `json:"reply_to_id"`
-	RepliesCount int        `json:"replies_count"`
-	Author       SimpleUser `json:"author"`
+	TweetID         string     `json:"tweet_id"`
+	Text            string     `json:"text"`
+	CreatedAt       time.Time  `json:"created_at"`
+	ReplyToID       string     `json:"reply_to_id"`
+	RepliesCount    int        `json:"replies_count"`
+	Author          SimpleUser `json:"author"`
+	ReplyToUsername string
 }
 
 type SimpleUser struct {

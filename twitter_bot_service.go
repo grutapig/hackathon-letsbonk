@@ -140,8 +140,9 @@ func (t *TwitterBotService) getNewMentions() ([]twitterapi.Tweet, error) {
 					Author: twitterapi.Author{
 						UserName: st.Author.Username,
 					},
-					CreatedAtParsed: st.CreatedAt,
-					InReplyToId:     st.ReplyToID,
+					CreatedAtParsed:   st.CreatedAt,
+					InReplyToId:       st.ReplyToID,
+					InReplyToUsername: st.ReplyToUsername,
 				}
 				tweets = append(tweets, tweet)
 			}
@@ -192,8 +193,11 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 		return nil
 	}
 	//check if pig tagged but it was just reply
-	if tweet.InReplyToId != "" {
-
+	if strings.ToLower(tweet.InReplyToUsername) == strings.ToLower(strings.TrimPrefix(t.botTag, "@")) {
+		if strings.Count(strings.ToLower(tweet.Text), strings.ToLower(t.botTag)) < 2 {
+			log.Printf("not contains '%s', just skip; text: %s; author: %s\n", t.botTag, tweet.Text, tweet.Author.UserName)
+			return nil
+		}
 	}
 
 	var cacheData string
@@ -207,6 +211,10 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 	} else if tweet.InReplyToId != "" {
 		repliedToTweet, repliedToAuthor, err := t.getRepliedToTweetAndAuthor(tweet.InReplyToId)
 		if strings.ToLower(repliedToAuthor) == strings.ToLower(strings.TrimPrefix(t.botTag, "@")) {
+			if strings.Count(strings.ToLower(tweet.Text), strings.ToLower(t.botTag)) < 2 {
+				log.Printf("we will not answer on replies to our bot 2: %s", tweet.Text)
+				return nil
+			}
 			log.Printf("we will not answer on replies to our bot: %s", tweet.Text)
 			return nil
 		}

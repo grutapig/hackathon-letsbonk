@@ -362,11 +362,12 @@ func (s *TwitterReverseService) GetNotificationsSimple() ([]SimpleTweet, error) 
 					replyToStatusIdStr = entry.Content.ItemContent.TweetResults.Result.Legacy.QuotedStatusIdStr
 				}
 				tweets = append(tweets, SimpleTweet{
-					TweetID:      entry.Content.ItemContent.TweetResults.Result.Legacy.IdStr,
-					Text:         entry.Content.ItemContent.TweetResults.Result.Legacy.FullText,
-					CreatedAt:    timeConverted,
-					ReplyToID:    replyToStatusIdStr,
-					RepliesCount: entry.Content.ItemContent.TweetResults.Result.Legacy.ReplyCount,
+					TweetID:         entry.Content.ItemContent.TweetResults.Result.Legacy.IdStr,
+					Text:            entry.Content.ItemContent.TweetResults.Result.Legacy.FullText,
+					CreatedAt:       timeConverted,
+					ReplyToID:       replyToStatusIdStr,
+					ReplyToUsername: entry.Content.ItemContent.TweetResults.Result.Legacy.InReplyToScreenName,
+					RepliesCount:    entry.Content.ItemContent.TweetResults.Result.Legacy.ReplyCount,
 					Author: SimpleUser{
 						ID:       entry.Content.ItemContent.TweetResults.Result.Legacy.UserIdStr,
 						Username: entry.Content.ItemContent.TweetResults.Result.Core.UserResults.Result.Core.ScreenName,

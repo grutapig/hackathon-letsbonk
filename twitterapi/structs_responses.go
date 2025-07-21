@@ -89,7 +89,7 @@ type Tweet struct {
 	InReplyToId       string      `json:"inReplyToId"`
 	ConversationId    string      `json:"conversationId"`
 	InReplyToUserId   interface{} `json:"inReplyToUserId"`
-	InReplyToUsername interface{} `json:"inReplyToUsername"`
+	InReplyToUsername string      `json:"inReplyToUsername"`
 	Author            Author      `json:"author"`
 	ExtendedEntities  struct {
 		Media []struct {
