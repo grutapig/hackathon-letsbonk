@@ -14,8 +14,6 @@ import (
 	"time"
 )
 
-const TWEET_POST_ADMIN_USERS = "Jman369420,NyraanAlpha,kordaciusluk,Dogtor_a1"
-
 type TwitterBotService struct {
 	twitterAPI      *twitterapi.TwitterAPIService
 	twitterReverse  *twitterapi_reverse.TwitterReverseService
@@ -25,7 +23,6 @@ type TwitterBotService struct {
 	authSession     string
 	proxyDsn        string
 	knownTweets     map[string]bool
-	adminUsers      []string
 	tweetsMutex     sync.RWMutex
 	isMonitoring    bool
 	monitoringMutex sync.Mutex
@@ -54,7 +51,6 @@ func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, twitterRever
 		authSession:     authSession,
 		claudeAPI:       claudeApi,
 		proxyDsn:        proxyDSN,
-		adminUsers:      strings.Split(TWEET_POST_ADMIN_USERS, ","),
 		knownTweets:     make(map[string]bool),
 	}
 }
@@ -185,9 +181,8 @@ func (t *TwitterBotService) findNewTweets(tweets []twitterapi.Tweet) []twitterap
 }
 
 func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
-	isAdmin := strings.Contains(TWEET_POST_ADMIN_USERS, tweet.Author.UserName)
-	mentionedUsers := t.parseUserMentions(tweet.Text, tweet.Author.UserName)
-	if !strings.Contains(tweet.Text, "?") && !isAdmin {
+	mentionedUsers := t.parseUserMentions(tweet.Text)
+	if !strings.Contains(tweet.Text, "?") {
 		log.Printf("not contains '?', nothing asked: %s (%s)\n", tweet.Text, tweet.Author.UserName)
 		return nil
 	}
@@ -219,6 +214,10 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 		log.Printf("nothing asked: %s (%s), reply: %s\n", tweet.Text, tweet.Author.UserName, tweet.InReplyToId)
 		return nil
 	}
+	if strings.ToLower(mentionedUser) == strings.ToLower(strings.TrimPrefix(t.botTag, "@")) {
+		log.Printf("mentioned user cannot be current bot: %s", tweet.Text)
+		return nil
+	}
 
 	responseText, err := t.generateClaudeResponse(tweet.Text, repliedMessage, cacheData, isMessageEvaluation, mentionedUser, tweet.Author.UserName)
 	if err != nil {
@@ -244,14 +243,14 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 	return nil
 }
 
-func (t *TwitterBotService) parseUserMentions(text, currentUser string) []string {
+func (t *TwitterBotService) parseUserMentions(text string) []string {
 	re := regexp.MustCompile(`@([a-zA-Z0-9_]+)`)
 	matches := re.FindAllStringSubmatch(text, -1)
 
 	var users []string
 	for _, match := range matches {
 		username := strings.ToLower(match[1])
-		if username != strings.ToLower(currentUser) && username != strings.ToLower(strings.TrimPrefix(t.botTag, "@")) {
+		if username != strings.ToLower(strings.TrimPrefix(t.botTag, "@")) {
 			users = append(users, username)
 		}
 	}
@@ -333,7 +332,7 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 	var systemPrompt string
 	var userPrompt string
 
-	systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. At current time you work only with $DARK community, but in future will expand. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities, but admin users list can asks about anything. Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 symbols). Always mark as 'presumably' on your decisions. If author is from admin list, you not required to analyze somebody(if he not asked), you can just communicate with him."
+	systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities, but admin users list can asks about anything. Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 symbols). Always mark as 'presumably' on your decisions."
 	if isMessageEvaluation {
 		userPrompt = fmt.Sprintf("Tagger's message: '%s'\n\nMessage to evaluate: '%s'\n\nAuthor of message and user to analyze: '%s'\nUser data:\n%s", originalMessage, repliedMessage, mentionedUser, cacheData)
 	} else {
@@ -344,10 +343,6 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 		{
 			Role:    ROLE_USER,
 			Content: userPrompt,
-		},
-		{
-			Role:    ROLE_USER,
-			Content: fmt.Sprintf("admins user list: %s", TWEET_POST_ADMIN_USERS),
 		},
 		{
 			Role:    ROLE_USER,
