@@ -201,11 +201,6 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 		return nil
 	}
 
-	if !strings.Contains(strings.ToLower(text), strings.ToLower(t.botTag)) {
-		log.Printf("not contains '%s', just skip; text: %s; author: %s\n", t.botTag, text, tweet.Author.UserName)
-		return nil
-	}
-
 	var cacheData string
 	var repliedMessage string
 	var isMessageEvaluation bool
@@ -376,7 +371,7 @@ If message ignored add the keyword in the response: NOTHING_ASK.
 			Content: "give me short finished answer to post tweet one sentence.",
 		},
 	}
-	log.Printf("request to claude: %s, system: %s\n", userPrompt, systemPrompt)
+	log.Printf("request to claude: %s\n system: %s\nmessage:%s\n", userPrompt, systemPrompt, originalMessage)
 	response, err := t.claudeAPI.SendMessage(request, systemPrompt)
 	if err != nil {
 		log.Println("claude sendMessage:", request, ". error:", err, ". Try one more time...")
