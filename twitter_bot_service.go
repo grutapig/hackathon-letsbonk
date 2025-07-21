@@ -334,11 +334,11 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 	var userPrompt string
 
 	if isMessageEvaluation {
-		systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities, but admin users list can asks about anything. Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 symbols). If user is FUDer, add remark presumably."
+		systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. At current time you work only with $DARK community, but in future will expand. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities, but admin users list can asks about anything. Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 symbols). If user is FUDer, add remark presumably."
 		userPrompt = fmt.Sprintf("Tagger's message: '%s'\n\nMessage to evaluate: '%s'\n\nAuthor of message and user to analyze: '%s'\nUser data:\n%s", originalMessage, repliedMessage, mentionedUser, cacheData)
 	} else {
-		systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities, but admin users list can asks about anything. Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet (180 symbols). If user is FUDer, add remark presumably."
-		userPrompt = fmt.Sprintf("Original message: '%s'\nuser to analyze: '%s'\nCache information:\n%s", originalMessage, mentionedUser, cacheData)
+		systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. At current time you work only with $DARK community, but in future will expand. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities, but admin users list can asks about anything. Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet (180 symbols). If user is FUDer, add remark presumably."
+		userPrompt = fmt.Sprintf("Original message: '%s'\nuser to analyze: '%s'\nUser data:\n%s", originalMessage, mentionedUser, cacheData)
 	}
 
 	request := ClaudeMessages{
