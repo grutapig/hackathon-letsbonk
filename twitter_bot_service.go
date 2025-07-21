@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+const TWEET_POST_ADMIN_USERS = "Jman369420,NyraanAlpha,kordaciusluk,Dogtor_a1"
+
 type TwitterBotService struct {
 	twitterAPI      *twitterapi.TwitterAPIService
 	twitterReverse  *twitterapi_reverse.TwitterReverseService
@@ -23,6 +25,7 @@ type TwitterBotService struct {
 	authSession     string
 	proxyDsn        string
 	knownTweets     map[string]bool
+	adminUsers      []string
 	tweetsMutex     sync.RWMutex
 	isMonitoring    bool
 	monitoringMutex sync.Mutex
@@ -51,6 +54,7 @@ func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, twitterRever
 		authSession:     authSession,
 		claudeAPI:       claudeApi,
 		proxyDsn:        proxyDSN,
+		adminUsers:      strings.Split(TWEET_POST_ADMIN_USERS, ","),
 		knownTweets:     make(map[string]bool),
 	}
 }
@@ -181,8 +185,9 @@ func (t *TwitterBotService) findNewTweets(tweets []twitterapi.Tweet) []twitterap
 }
 
 func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
+	isAdmin := strings.Contains(TWEET_POST_ADMIN_USERS, tweet.Author.UserName)
 	mentionedUsers := t.parseUserMentions(tweet.Text, tweet.Author.UserName)
-	if !strings.Contains(tweet.Text, "?") {
+	if !strings.Contains(tweet.Text, "?") && !isAdmin {
 		log.Printf("not contains '?', nothing asked: %s (%s)\n", tweet.Text, tweet.Author.UserName)
 		return nil
 	}
@@ -215,7 +220,7 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 		return nil
 	}
 
-	responseText, err := t.generateClaudeResponse(tweet.Text, repliedMessage, cacheData, isMessageEvaluation, mentionedUser)
+	responseText, err := t.generateClaudeResponse(tweet.Text, repliedMessage, cacheData, isMessageEvaluation, mentionedUser, tweet.Author.UserName)
 	if err != nil {
 		log.Printf("Error generating Claude response: %v", err)
 		responseText = fmt.Sprintf("Hello @%s! Thank you for mentioning me. \nDetailed analyze on '%s' user you can read here:", tweet.Author.UserName, mentionedUser)
@@ -320,7 +325,7 @@ func (t *TwitterBotService) prepareCacheDataForClaude(usernames []string) string
 	return string(jsonData)
 }
 
-func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessage, cacheData string, isMessageEvaluation bool, mentionedUser string) (string, error) {
+func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessage, cacheData string, isMessageEvaluation bool, mentionedUser string, authorUsername string) (string, error) {
 	if t.claudeAPI == nil {
 		return "", fmt.Errorf("Claude API not initialized")
 	}
@@ -329,14 +334,22 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 	var userPrompt string
 
 	if isMessageEvaluation {
-		systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities. Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 symbols)."
+		systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities, but admin users list can asks about anything. Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 symbols)."
 		userPrompt = fmt.Sprintf("Tagger's message: '%s'\n\nMessage to evaluate: '%s'\n\nAuthor of message and user to analyze: '%s'\nUser data:\n%s", originalMessage, repliedMessage, mentionedUser, cacheData)
 	} else {
-		systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities. Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet (180 symbols)."
+		systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities, but admin users list can asks about anything. Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet (180 symbols)."
 		userPrompt = fmt.Sprintf("Original message: '%s'\nuser to analyze: '%s'\nCache information:\n%s", originalMessage, mentionedUser, cacheData)
 	}
 
 	request := ClaudeMessages{
+		{
+			Role:    ROLE_USER,
+			Content: fmt.Sprintf("admins user list: %s", TWEET_POST_ADMIN_USERS),
+		},
+		{
+			Role:    ROLE_USER,
+			Content: fmt.Sprintf("User '%s' asks:", authorUsername),
+		},
 		{
 			Role:    ROLE_USER,
 			Content: userPrompt,
