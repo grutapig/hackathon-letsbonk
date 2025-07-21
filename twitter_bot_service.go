@@ -191,6 +191,10 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 		log.Printf("not contains '%s', just skip; text: %s; author: %s\n", t.botTag, tweet.Text, tweet.Author.UserName)
 		return nil
 	}
+	//check if pig tagged but it was just reply
+	if tweet.InReplyToId != "" {
+
+	}
 
 	var cacheData string
 	var repliedMessage string
@@ -202,6 +206,10 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 		mentionedUser = mentionedUsers[0]
 	} else if tweet.InReplyToId != "" {
 		repliedToTweet, repliedToAuthor, err := t.getRepliedToTweetAndAuthor(tweet.InReplyToId)
+		if strings.ToLower(repliedToAuthor) == strings.ToLower(strings.TrimPrefix(t.botTag, "@")) {
+			log.Printf("we will not answer on replies to our bot: %s", tweet.Text)
+			return nil
+		}
 		if err != nil {
 			log.Printf("Error getting replied-to tweet: %v", err)
 		} else {
