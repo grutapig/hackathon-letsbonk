@@ -1,19 +1,14 @@
 package main
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"github.com/grutapig/hackaton/twitterapi"
-	"io"
 	"log"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -43,69 +38,6 @@ type TelegramService struct {
 	loggingService         *LoggingService
 }
 
-type TelegramUpdate struct {
-	UpdateID int64 `json:"update_id"`
-	Message  struct {
-		MessageID int64 `json:"message_id"`
-		From      struct {
-			ID        int64  `json:"id"`
-			IsBot     bool   `json:"is_bot"`
-			FirstName string `json:"first_name"`
-			LastName  string `json:"last_name,omitempty"`
-			Username  string `json:"username,omitempty"`
-		} `json:"from"`
-		Chat struct {
-			ID    int64  `json:"id"`
-			Type  string `json:"type"`
-			Title string `json:"title,omitempty"`
-		} `json:"chat"`
-		Date int64  `json:"date"`
-		Text string `json:"text"`
-	} `json:"message"`
-}
-
-type TelegramResponse struct {
-	OK     bool             `json:"ok"`
-	Result []TelegramUpdate `json:"result"`
-	Error  *TelegramError   `json:"error,omitempty"`
-}
-
-type TelegramError struct {
-	ErrorCode   int    `json:"error_code"`
-	Description string `json:"description"`
-}
-
-type TelegramSendMessageRequest struct {
-	ChatID         int64  `json:"chat_id"`
-	Text           string `json:"text"`
-	ParseMode      string `json:"parse_mode,omitempty"`
-	DisablePreview bool   `json:"disable_web_page_preview,omitempty"`
-}
-
-type TelegramSendDocumentRequest struct {
-	ChatID    int64  `json:"chat_id"`
-	Caption   string `json:"caption,omitempty"`
-	ParseMode string `json:"parse_mode,omitempty"`
-}
-
-type TelegramEditMessageRequest struct {
-	ChatID         int64  `json:"chat_id"`
-	MessageID      int64  `json:"message_id"`
-	Text           string `json:"text"`
-	ParseMode      string `json:"parse_mode,omitempty"`
-	DisablePreview bool   `json:"disable_web_page_preview,omitempty"`
-}
-
-type TelegramSendMessageResponse struct {
-	OK     bool `json:"ok"`
-	Result struct {
-		MessageID int64 `json:"message_id"`
-		Chat      struct {
-			ID int64 `json:"id"`
-		} `json:"chat"`
-	} `json:"result"`
-}
-
 func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, formatter *NotificationFormatter, dbService *DatabaseService, analysisChannel chan twitterapi.NewMessage) (*TelegramService, error) {
 	transport := &http.Transport{}
 	if proxyDSN != "" {
@@ -118,7 +50,7 @@ func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, f
 
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   10 * time.Second,
+		Timeout:   30 * time.Second,
 	}
 
 	service := &TelegramService{
@@ -199,8 +131,8 @@ func (t *TelegramService) StartListening() {
 			err := t.processUpdates()
 			if err != nil {
 				log.Printf("Error processing Telegram updates: %v", err)
+				time.Sleep(5 * time.Second)
 			}
-			time.Sleep(2 * time.Second)
 		}
 	}()
 
@@ -236,257 +168,98 @@ func (t *TelegramService) processUpdates() error {
 	}
 
 	for _, update := range updates {
-		t.lastOffset = update.UpdateID + 1
+		go func(update TelegramUpdate) {
+			t.lastOffset = update.UpdateID + 1
 
-		chatID := update.Message.Chat.ID
-		t.chatMutex.Lock()
-		if !t.chatIDs[chatID] {
-			t.chatIDs[chatID] = true
-			log.Printf("New Telegram chat registered: %d (from: %s)", chatID, update.Message.From.FirstName)
+			chatID := update.Message.Chat.ID
+			t.chatMutex.Lock()
+			if !t.chatIDs[chatID] {
+				t.chatIDs[chatID] = true
+				log.Printf("New Telegram chat registered: %d (from: %s)", chatID, update.Message.From.FirstName)
 
-			info := fmt.Sprintf("✅ Chat registered!\nChat ID: %d\nUser: %s %s\nUsername: @%s", chatID, update.Message.From.FirstName, update.Message.From.LastName, update.Message.From.Username)
+				info := fmt.Sprintf("✅ Chat registered!\nChat ID: %d\nUser: %s %s\nUsername: @%s", chatID, update.Message.From.FirstName, update.Message.From.LastName, update.Message.From.Username)
 
-			go t.SendMessage(chatID, info)
-		}
-		t.chatMutex.Unlock()
-
-		if update.Message.Text != "" {
-			text := strings.TrimSpace(update.Message.Text)
-
-			parts := strings.Fields(text)
-			if len(parts) == 0 {
-				return nil
+				go t.SendMessage(chatID, info)
 			}
+			t.chatMutex.Unlock()
 
-			command := parts[0]
-			args := parts[1:]
+			if update.Message.Text != "" {
+				text := strings.TrimSpace(update.Message.Text)
 
-			switch {
-			case strings.HasPrefix(command, "/detail_"):
-				go t.handleDetailCommand(chatID, text)
-			case strings.HasPrefix(command, "/history_"):
-				go t.handleHistoryCommand(chatID, text)
-			case strings.HasPrefix(command, "/export_"):
-				go t.handleExportCommand(chatID, text)
-			case strings.HasPrefix(command, "/ticker_history_"):
-				go t.handleTickerHistoryCommand(chatID, text)
-			case strings.HasPrefix(command, "/cache_"):
-				go t.handleCacheCommand(chatID, text)
-			case command == "/analyze_all":
-				if !t.isAdminChat(chatID) {
-					go t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
-					continue
+				parts := strings.Fields(text)
+				if len(parts) == 0 {
+					return
 				}
-				go t.handleAnalyzeAllCommand(chatID)
-				continue
-			case strings.HasPrefix(command, "/analyze_"):
-				go t.handleAnalyzeCommand(chatID, text)
-			case command == "/search":
-				go t.handleSearchCommand(chatID, args)
-			case command == "/fudlist" || strings.HasPrefix(command, "/fudlist_"):
-				go t.handleFudListCommand(chatID, args, command)
-			case command == "/exportfudlist":
-				go t.handleExportFudListCommand(chatID)
-			case command == "/topfud" || strings.HasPrefix(command, "/topfud_"):
-				go t.handleTopFudCommand(chatID, args, command)
-			case command == "/tasks":
-				go t.handleTasksCommand(chatID)
-			case command == "/last5":
-				go t.handleLast5MessagesCommand(chatID)
-			case command == "/u":
-				t.SendMessage(chatID, fmt.Sprintf("users: %d", len(t.chatIDs)))
-			case command == "/top20_analyze":
-				if !t.isAdminChat(chatID) {
-					go t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
-					continue
+
+				command := parts[0]
+				args := parts[1:]
+
+				switch {
+				case strings.HasPrefix(command, "/detail_"):
+					t.handleDetailCommand(chatID, text)
+				case strings.HasPrefix(command, "/history_"):
+					t.handleHistoryCommand(chatID, text)
+				case strings.HasPrefix(command, "/export_"):
+					t.handleExportCommand(chatID, text)
+				case strings.HasPrefix(command, "/ticker_history_"):
+					t.handleTickerHistoryCommand(chatID, text)
+				case strings.HasPrefix(command, "/cache_"):
+					t.handleCacheCommand(chatID, text)
+				case command == "/analyze_all":
+					if !t.isAdminChat(chatID) {
+						t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
+						return
+					}
+					t.handleAnalyzeAllCommand(chatID)
+					return
+				case strings.HasPrefix(command, "/analyze_"):
+					t.handleAnalyzeCommand(chatID, text)
+				case command == "/search":
+					t.handleSearchCommand(chatID, args)
+				case command == "/fudlist" || strings.HasPrefix(command, "/fudlist_"):
+					t.handleFudListCommand(chatID, args, command)
+				case command == "/exportfudlist":
+					t.handleExportFudListCommand(chatID)
+				case command == "/topfud" || strings.HasPrefix(command, "/topfud_"):
+					t.handleTopFudCommand(chatID, args, command)
+				case command == "/tasks":
+					t.handleTasksCommand(chatID)
+				case command == "/last5":
+					t.handleLast5MessagesCommand(chatID)
+				case command == "/u":
+					t.SendMessage(chatID, fmt.Sprintf("users: %d", len(t.chatIDs)))
+				case command == "/top20_analyze":
+					if !t.isAdminChat(chatID) {
+						t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
+						return
+					}
+					t.handleTop20AnalyzeCommand(chatID)
+				case command == "/top100_analyze":
+					if !t.isAdminChat(chatID) {
+						t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
+						return
+					}
+					t.handleTop100AnalyzeCommand(chatID)
+				case command == "/batch_analyze":
+					t.handleBatchAnalyzeCommand(chatID, args)
+				case command == "/update_reverse_auth":
+					if !t.isAdminChat(chatID) {
+						t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
+						return
+					}
+					t.handleUpdateReverseAuthCommand(chatID, text)
+				case command == "/start":
+					t.handleStartCommand(chatID, strings.Join(args, ""))
+				case command == "/help":
+					t.handleHelpCommand(chatID)
+				default:
+					t.handleHelpCommand(chatID)
 				}
-				go t.handleTop20AnalyzeCommand(chatID)
-			case command == "/top100_analyze":
-				if !t.isAdminChat(chatID) {
-					go t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
-					continue
-				}
-				go t.handleTop100AnalyzeCommand(chatID)
-			case command == "/batch_analyze":
-				go t.handleBatchAnalyzeCommand(chatID, args)
-			case command == "/update_reverse_auth":
-				if !t.isAdminChat(chatID) {
-					go t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
-					continue
-				}
-				go t.handleUpdateReverseAuthCommand(chatID, text)
-			case command == "/start":
-				go t.handleStartCommand(chatID, strings.Join(args, ""))
-			case command == "/help":
-				go t.handleHelpCommand(chatID)
-			default:
-				go t.handleHelpCommand(chatID)
 			}
-		}
+		}(update)
 	}
 
 	return nil
-}
-
-func (t *TelegramService) getUpdates() ([]TelegramUpdate, error) {
-	uri := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=1", t.apiKey, t.lastOffset)
-
-	resp, err := t.client.Get(uri)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var telegramResp TelegramResponse
-	err = json.Unmarshal(body, &telegramResp)
-	if err != nil {
-		return nil, err
-	}
-
-	if !telegramResp.OK {
-		return nil, fmt.Errorf("telegram API error: %v", telegramResp.Error)
-	}
-
-	return telegramResp.Result, nil
-}
-
-func (t *TelegramService) SendMessage(chatID int64, text string) error {
-	reqBody := TelegramSendMessageRequest{
-		ChatID:         chatID,
-		Text:           text,
-		ParseMode:      "HTML",
-		DisablePreview: true,
-	}
-
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return err
-	}
-
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", t.apiKey)
-	resp, err := t.client.Post(url, "application/json", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("telegram send message failed: %s", string(body))
-	}
-
-	return nil
-}
-
-func (t *TelegramService) SendMessageWithID(chatID int64, text string) (int64, error) {
-	reqBody := TelegramSendMessageRequest{
-		ChatID:         chatID,
-		Text:           text,
-		ParseMode:      "HTML",
-		DisablePreview: true,
-	}
-
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return 0, err
-	}
-
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", t.apiKey)
-	resp, err := t.client.Post(url, "application/json", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		return 0, fmt.Errorf("telegram send message failed: %s", string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
-	}
-
-	var response TelegramSendMessageResponse
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return 0, err
-	}
-
-	return response.Result.MessageID, nil
-}
-
-func (t *TelegramService) EditMessage(chatID int64, messageID int64, text string) error {
-	reqBody := TelegramEditMessageRequest{
-		ChatID:         chatID,
-		MessageID:      messageID,
-		Text:           text,
-		ParseMode:      "HTML",
-		DisablePreview: true,
-	}
-
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return err
-	}
-
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/editMessageText", t.apiKey)
-	resp, err := t.client.Post(url, "application/json", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("telegram edit message failed: %s", string(body))
-	}
-
-	return nil
-}
-
-func (t *TelegramService) SendMessageWithResponse(chatID int64, text string) (*TelegramSendMessageResponse, error) {
-	reqBody := TelegramSendMessageRequest{
-		ChatID:         chatID,
-		Text:           text,
-		ParseMode:      "HTML",
-		DisablePreview: true,
-	}
-
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, err
-	}
-
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", t.apiKey)
-	resp, err := t.client.Post(url, "application/json", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("telegram send message failed: %s", string(body))
-	}
-
-	var response TelegramSendMessageResponse
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return nil, err
-	}
-
-	return &response, nil
 }
 
 func (t *TelegramService) generateTaskID() (string, error) {
@@ -496,63 +269,6 @@ func (t *TelegramService) generateTaskID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
-}
-
-func (t *TelegramService) SendDocument(chatID int64, filePath string, caption string) error {
-
-	file, err := os.Open(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-
-	err = writer.WriteField("chat_id", strconv.FormatInt(chatID, 10))
-	if err != nil {
-		return err
-	}
-
-	if caption != "" {
-		err = writer.WriteField("caption", caption)
-		if err != nil {
-			return err
-		}
-		err = writer.WriteField("parse_mode", "HTML")
-		if err != nil {
-			return err
-		}
-	}
-
-	part, err := writer.CreateFormFile("document", filepath.Base(filePath))
-	if err != nil {
-		return err
-	}
-
-	_, err = io.Copy(part, file)
-	if err != nil {
-		return err
-	}
-
-	err = writer.Close()
-	if err != nil {
-		return err
-	}
-
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendDocument", t.apiKey)
-	resp, err := t.client.Post(url, writer.FormDataContentType(), &requestBody)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("telegram send document failed: %s", string(body))
-	}
-
-	return nil
 }
 
 func (t *TelegramService) BroadcastMessage(text string) error {
