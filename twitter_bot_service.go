@@ -187,6 +187,11 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 		return nil
 	}
 
+	if !strings.Contains(strings.ToLower(tweet.Text), strings.ToLower(t.botTag)) {
+		log.Printf("not contains '%s', just skip; text: %s; author: %s\n", t.botTag, tweet.Text, tweet.Author.UserName)
+		return nil
+	}
+
 	var cacheData string
 	var repliedMessage string
 	var isMessageEvaluation bool
@@ -213,7 +218,7 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 	responseText, err := t.generateClaudeResponse(tweet.Text, repliedMessage, cacheData, isMessageEvaluation, mentionedUser)
 	if err != nil {
 		log.Printf("Error generating Claude response: %v", err)
-		responseText = fmt.Sprintf("Hello @%s! Thank you for mentioning me.", tweet.Author.UserName)
+		responseText = fmt.Sprintf("Hello @%s! Thank you for mentioning me. \nDetailed analyze on '%s' user you can read here:", tweet.Author.UserName, mentionedUser)
 	}
 	responseText += "\nt.me/GrutaDarkBot?start=cache_" + mentionedUser
 
@@ -324,10 +329,10 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 	var userPrompt string
 
 	if isMessageEvaluation {
-		systemPrompt = "Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 symbols)."
+		systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities. Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. Respond in English. The message should be short and fit in a tweet (180 symbols)."
 		userPrompt = fmt.Sprintf("Tagger's message: '%s'\n\nMessage to evaluate: '%s'\n\nAuthor of message and user to analyze: '%s'\nUser data:\n%s", originalMessage, repliedMessage, mentionedUser, cacheData)
 	} else {
-		systemPrompt = "Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet (180 symbols)."
+		systemPrompt = "You are anti FUD manager, to help users detect FUDers or clean users. Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities. Answer the user's question with humor in English knowing the given information. The message should be short and fit in a tweet (180 symbols)."
 		userPrompt = fmt.Sprintf("Original message: '%s'\nuser to analyze: '%s'\nCache information:\n%s", originalMessage, mentionedUser, cacheData)
 	}
 
@@ -344,7 +349,11 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 	log.Printf("request to claude: %s, system: %s\n", userPrompt, systemPrompt)
 	response, err := t.claudeAPI.SendMessage(request, systemPrompt)
 	if err != nil {
-		return "", err
+		log.Println("claude sendMessage:", request, ". error:", err, ". Try one more time...")
+		response, err = t.claudeAPI.SendMessage(request, systemPrompt)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	if len(response.Content) > 0 {
