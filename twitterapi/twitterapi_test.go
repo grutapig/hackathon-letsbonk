@@ -108,8 +108,8 @@ func TestTwitterAPIService_PostTweet(t *testing.T) {
 	api := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
 	postTweetResponse, err := api.PostTweet(PostTweetRequest{
 		AuthSession: os.Getenv(ENV_TWITTER_AUTH),
-		TweetText: `Looking at the data, CDoughnath appears to be a solid long-term $DARK holder who's been consistently supportive of the community for months! 📊 They do technical analysis and seem genuinely invested in the project.
-t.me/GrutaDarkBot?start=cache_CDoughnath
+		TweetText: `@yumang93587 is presumably a professional FUD operator using Trojan Horse tactics - started as supportive community member but evolved into systematically attacking key figures like you with false promise accusations. Classic coordinated undermining strategy! 🐷🔍
+t.me/GrutaDarkBot?start=cache_yumang93587
 `,
 		QuoteTweetId:     "",
 		InReplyToTweetId: "",

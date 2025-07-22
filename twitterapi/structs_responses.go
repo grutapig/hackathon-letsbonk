@@ -254,7 +254,31 @@ type AdvancedSearchResponse struct {
 type PostTweetResponse struct {
 	Status string `json:"status"`
 	Msg    string `json:"msg"`
-	Data   struct {
+	Errors []struct {
+		Code       int `json:"code"`
+		Extensions struct {
+			Code    int    `json:"code"`
+			Kind    string `json:"kind"`
+			Name    string `json:"name"`
+			Source  string `json:"source"`
+			Tracing struct {
+				TraceId string `json:"trace_id"`
+			} `json:"tracing"`
+		} `json:"extensions"`
+		Kind      string `json:"kind"`
+		Locations []struct {
+			Column int `json:"column"`
+			Line   int `json:"line"`
+		} `json:"locations"`
+		Message string   `json:"message"`
+		Name    string   `json:"name"`
+		Path    []string `json:"path"`
+		Source  string   `json:"source"`
+		Tracing struct {
+			TraceId string `json:"trace_id"`
+		} `json:"tracing"`
+	} `json:"errors"`
+	Data struct {
 		CreateTweet struct {
 			TweetResult struct {
 				Result struct {

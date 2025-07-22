@@ -290,5 +290,8 @@ func (s *TwitterAPIService) PostTweet(request PostTweetRequest) (*PostTweetRespo
 	fmt.Println(string(body))
 	postTweetResponse := PostTweetResponse{}
 	err = json.Unmarshal(body, &postTweetResponse)
+	if len(postTweetResponse.Errors) > 0 {
+		return &postTweetResponse, fmt.Errorf("error post tweet %s, error: %s", request.TweetText, postTweetResponse.Errors[0].Message)
+	}
 	return &postTweetResponse, err
 }
