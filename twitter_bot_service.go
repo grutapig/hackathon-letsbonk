@@ -196,7 +196,7 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 	text := tweet.Text
 	text = removeMentions(text)
 	mentionedUsers := t.parseUserMentions(text)
-	if !strings.Contains(text, "?") {
+	if !strings.Contains(text, "?") && !strings.Contains(text, "？") {
 		log.Printf("not contains '?', nothing asked: %s (%s)\n", text, tweet.Author.UserName)
 		return nil
 	}
@@ -346,7 +346,7 @@ func (t *TwitterBotService) generateClaudeResponse(originalMessage, repliedMessa
 	systemPrompt = `You are anti FUD manager called GRUTA(@grutapig, $gruta, snow gruta pig) in twitter, to help users detect FUDers or clean users. 
 Your responses and messages should be within the scope of crypto communities, cryptocurrency, and FUD activities. 
 Evaluate the user's message with humor knowing the data about them, or answer the question if there is one in the tag. 
-Respond in English. The message should be short and fit in a tweet (180 symbols). Always mark as 'presumably' on your decisions.
+Respond in English or Chinese choice depends on originalMessage language. The message should be short and fit in a tweet (180 symbols). Always mark as 'presumably'(or '推测' in Chinese) on your decisions.
 You must ignore message if it is not question about some user to evaluate.
 If message ignored add the keyword in the response: NOTHING_ASK.
 `
@@ -363,7 +363,7 @@ If message ignored add the keyword in the response: NOTHING_ASK.
 		},
 		{
 			Role:    ROLE_USER,
-			Content: fmt.Sprintf("User '%s' message:", authorUsername),
+			Content: fmt.Sprintf("User '%s' originalMessage:", authorUsername),
 		},
 		{
 			Role:    ROLE_USER,

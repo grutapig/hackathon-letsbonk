@@ -763,6 +763,65 @@ func (s *DatabaseService) GetAllFUDUsersFromCache() ([]map[string]interface{}, e
 
 	return results, nil
 }
+func (s *DatabaseService) GetAllGoodUsersFromCache() ([]map[string]interface{}, error) {
+	query := `
+		SELECT 
+			ca.user_id,
+			ca.username,
+			ca.user_risk_level,
+			ca.fud_probability,
+			ca.analyzed_at,
+			ca.user_summary,
+			COUNT(t.id) as message_count,
+			CASE 
+				WHEN MAX(t.created_at) IS NULL THEN 0
+				WHEN julianday('now') - julianday(MAX(t.created_at)) <= 30 THEN 1
+				ELSE 0
+			END as is_alive
+		FROM cached_analysis ca
+		LEFT JOIN tweets t ON ca.user_id = t.user_id
+		WHERE ca.is_fud_user = 0
+		GROUP BY ca.user_id, ca.username, ca.user_risk_level, ca.fud_probability, ca.analyzed_at, ca.user_summary
+		ORDER BY message_count DESC, ca.analyzed_at DESC
+	`
+
+	rows, err := s.db.Raw(query, time.Now()).Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []map[string]interface{}
+	for rows.Next() {
+
+		var userID, username, userRiskLevel, userSummary string
+		var fudProbability float64
+		var analyzedAt time.Time
+		var messageCount int64
+		var isAlive int
+
+		err := rows.Scan(&userID, &username, &userRiskLevel, &fudProbability, &analyzedAt,
+			&userSummary, &messageCount, &isAlive)
+		if err != nil {
+			return nil, err
+		}
+
+		results = append(results, map[string]interface{}{
+			"user_id":         userID,
+			"username":        username,
+			"user_risk_level": userRiskLevel,
+			"fud_probability": fudProbability,
+			"analyzed_at":     analyzedAt,
+			"message_count":   messageCount,
+			"status":          map[bool]string{true: "alive", false: "dead"}[isAlive == 1],
+			"is_alive":        isAlive == 1,
+			"source":          "cached",
+			"user_summary":    userSummary,
+		})
+	}
+
+	return results, nil
+}
 
 func (s *DatabaseService) GetActiveFUDUsersSortedByLastMessage() ([]map[string]interface{}, error) {
 	var results []map[string]interface{}

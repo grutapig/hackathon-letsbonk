@@ -220,6 +220,8 @@ func (t *TelegramService) processUpdates() error {
 					t.handleSearchCommand(chatID, args)
 				case command == "/fudlist" || strings.HasPrefix(command, "/fudlist_"):
 					t.handleFudListCommand(chatID, args, command)
+				case command == "/goodlist" || strings.HasPrefix(command, "/goodlist_"):
+					t.handleGoodListCommand(chatID, args, command)
 				case command == "/exportfudlist":
 					t.handleExportFudListCommand(chatID)
 				case command == "/topfud" || strings.HasPrefix(command, "/topfud_"):

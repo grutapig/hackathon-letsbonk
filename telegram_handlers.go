@@ -119,6 +119,7 @@ func (t *TelegramService) handleHelpCommand(chatID int64) {
 
 📊 <b>Analysis Management:</b>
 • /fudlist - Show all detected FUD users
+• /goodlist - Show analyzed good users (non-FUD)
 • /topfud - Show cached FUD users sorted by last message
 • /exportfudlist - Export FUD usernames as comma-separated list
 
@@ -268,6 +269,100 @@ func (t *TelegramService) handleFudListCommand(chatID int64, args []string, comm
 	}
 
 	t.SendMessage(chatID, message.String())
+}
+func (t *TelegramService) handleGoodListCommand(chatID int64, args []string, command string) {
+	fmt.Println("got a command /goodlist")
+	page := 1
+
+	if strings.HasPrefix(command, "/goodlist_") {
+		pageStr := strings.TrimPrefix(command, "/goodlist_")
+		if pageNum, err := strconv.Atoi(pageStr); err == nil && pageNum > 0 {
+			page = pageNum
+		}
+	} else if len(args) > 0 {
+
+		if pageNum, err := strconv.Atoi(args[0]); err == nil && pageNum > 0 {
+			page = pageNum
+		}
+	}
+
+	const pageSize = 10
+
+	goodUsers, err := t.dbService.GetAllGoodUsersFromCache()
+	if err != nil {
+		t.SendMessage(chatID, fmt.Sprintf("❌ Error retrieving good users: %v", err))
+		return
+	}
+
+	if len(goodUsers) == 0 {
+		t.SendMessage(chatID, "📭 <b>No Analyzed Good Users Found</b>\n\n💡 No users have been analyzed as non-FUD or cache has expired.")
+		return
+	}
+
+	totalPages := (len(goodUsers) + pageSize - 1) / pageSize
+	if page > totalPages {
+		page = totalPages
+	}
+
+	startIdx := (page - 1) * pageSize
+	endIdx := startIdx + pageSize
+	if endIdx > len(goodUsers) {
+		endIdx = len(goodUsers)
+	}
+
+	var message strings.Builder
+	message.WriteString(fmt.Sprintf("✅ <b>Good Users (%d total) - Page %d/%d</b>\n\n", len(goodUsers), page, totalPages))
+
+	aliveCount := 0
+	deadCount := 0
+
+	for i := startIdx; i < endIdx; i++ {
+		user := goodUsers[i]
+
+		username := user["username"].(string)
+		userID := user["user_id"].(string)
+		messageCount := user["message_count"].(int64)
+
+		isAlive := user["is_alive"].(bool)
+		status := user["status"].(string)
+
+		if isAlive {
+			aliveCount++
+		} else {
+			deadCount++
+		}
+
+		statusEmoji := "💀"
+		if isAlive {
+			statusEmoji = "🟢"
+		}
+
+		message.WriteString(fmt.Sprintf("<b>%d.</b> 💾 @%s (%s) %s %s\n", i+1, username, userID, statusEmoji, status))
+		message.WriteString(fmt.Sprintf("    💬 Messages: %d\n", messageCount))
+		message.WriteString("    🔍 <b>Commands:</b>\n")
+		message.WriteString(fmt.Sprintf("      /export_%s - Message history\n", username))
+		message.WriteString(fmt.Sprintf("      /ticker_history_%s - Ticker posts\n", username))
+		message.WriteString(fmt.Sprintf("      /cache_%s - Detailed analysis\n", username))
+		message.WriteString(fmt.Sprintf("      https://x.com/%s\n", username))
+		message.WriteString("\n")
+	}
+	message.WriteString(fmt.Sprintf("📊 <b>Summary:</b>\n• ✅ Good users analyzed: %d\n• 🟢 Alive users: %d\n• 💀 Dead users: %d\n\n", len(goodUsers), aliveCount, deadCount))
+	if totalPages > 1 {
+		message.WriteString("📄 <b>Navigation:</b>\n")
+		if page > 1 {
+			message.WriteString(fmt.Sprintf("  ⬅️ /goodlist_%d (Previous)\n", page-1))
+		}
+		if page < totalPages {
+			message.WriteString(fmt.Sprintf("  ➡️ /goodlist_%d (Next)\n", page+1))
+		}
+		message.WriteString("\n")
+	}
+
+	err = t.SendMessage(chatID, message.String())
+	fmt.Println(message.String())
+	if err != nil {
+		t.SendMessage(chatID, "cannot send message, err:"+err.Error())
+	}
 }
 
 func (t *TelegramService) handleExportFudListCommand(chatID int64) {
