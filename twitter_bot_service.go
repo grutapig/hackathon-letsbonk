@@ -240,7 +240,10 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 		log.Printf("Error generating Claude response: %v", err)
 		responseText = fmt.Sprintf("Hello @%s! Thank you for mentioning me. \nDetailed analyze on '%s' user you can read here:", tweet.Author.UserName, mentionedUser)
 	}
-	responseText += "\nt.me/GrutaDarkBot?start=cache_" + mentionedUser
+	postfix := "\nt.me/GrutaDarkBot?start=cache_" + mentionedUser
+	if len(responseText)+len(postfix) < 280 {
+		responseText += postfix
+	}
 
 	log.Println("Final response:", responseText)
 	postRequest := twitterapi.PostTweetRequest{
