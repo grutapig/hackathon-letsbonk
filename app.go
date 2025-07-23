@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/grutapig/hackaton/claude"
 	"log"
 	"os"
 	"sync"
@@ -12,7 +13,7 @@ import (
 type Application struct {
 	config                 *Config
 	channels               *Channels
-	claudeAPI              *ClaudeApi
+	claudeAPI              *claude.ClaudeApi
 	twitterAPI             *twitterapi.TwitterAPIService
 	databaseService        *DatabaseService
 	loggingService         *LoggingService
@@ -26,7 +27,7 @@ type Application struct {
 func NewApplication(
 	config *Config,
 	channels *Channels,
-	claudeAPI *ClaudeApi,
+	claudeAPI *claude.ClaudeApi,
 	twitterAPI *twitterapi.TwitterAPIService,
 	databaseService *DatabaseService,
 	loggingService *LoggingService,

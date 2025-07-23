@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/grutapig/hackaton/claude"
 	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"os"
@@ -11,12 +12,12 @@ import (
 func TestClaudeApi_SendMessage(t *testing.T) {
 	err := godotenv.Load()
 	assert.NoError(t, err)
-	claude, err := NewClaudeClient(os.Getenv(ENV_CLAUDE_API_KEY), os.Getenv(ENV_PROXY_DSN), CLAUDE_MODEL)
+	claudeApi, err := claude.NewClaudeClient(os.Getenv(ENV_CLAUDE_API_KEY), os.Getenv(ENV_PROXY_DSN), claude.CLAUDE_MODEL)
 	assert.NoError(t, err)
-	response, err := claude.SendMessage(
-		ClaudeMessages{
-			{ROLE_USER, "hi solve this: 54+99"},
-			{ROLE_ASSISTANT, "{"},
+	response, err := claudeApi.SendMessage(
+		claude.ClaudeMessages{
+			{claude.ROLE_USER, "hi solve this: 54+99"},
+			{claude.ROLE_ASSISTANT, "{"},
 		},
 		"response JSON format {sum:365,param_first:1,param_second:2}")
 	assert.NoError(t, err)

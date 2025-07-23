@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/grutapig/hackaton/claude"
 	"github.com/grutapig/hackaton/twitterapi"
 	"log"
 	"os"
@@ -12,7 +13,7 @@ import (
 
 const FUD_TYPE = "known_fud_user_activity"
 
-func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan twitterapi.NewMessage, claudeApi *ClaudeApi, systemPromptFirstStep []byte, dbService *DatabaseService, loggingService *LoggingService, notificationCh chan FUDAlertNotification) {
+func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan twitterapi.NewMessage, claudeApi *claude.ClaudeApi, systemPromptFirstStep []byte, dbService *DatabaseService, loggingService *LoggingService, notificationCh chan FUDAlertNotification) {
 	defer close(fudChannel)
 
 	for newMessage := range newMessageCh {
@@ -41,17 +42,17 @@ func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan t
 
 			requestUUID := uuid.New().String()
 
-			messages := ClaudeMessages{}
+			messages := claude.ClaudeMessages{}
 
 			if newMessage.GrandParentTweet.ID != "" {
-				messages = append(messages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.GrandParentTweet.Author + ":" + newMessage.GrandParentTweet.Text})
-				messages = append(messages, ClaudeMessage{ROLE_USER, "reply in thread: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+				messages = append(messages, claude.ClaudeMessage{claude.ROLE_USER, "the main post is: " + newMessage.GrandParentTweet.Author + ":" + newMessage.GrandParentTweet.Text})
+				messages = append(messages, claude.ClaudeMessage{claude.ROLE_USER, "reply in thread: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
 			} else {
-				messages = append(messages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+				messages = append(messages, claude.ClaudeMessage{claude.ROLE_USER, "the main post is: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
 			}
 
-			messages = append(messages, ClaudeMessage{ROLE_USER, "user reply being analyzed: " + newMessage.Author.UserName + ":" + newMessage.Text})
-			messages = append(messages, ClaudeMessage{ROLE_ASSISTANT, "{"})
+			messages = append(messages, claude.ClaudeMessage{claude.ROLE_USER, "user reply being analyzed: " + newMessage.Author.UserName + ":" + newMessage.Text})
+			messages = append(messages, claude.ClaudeMessage{claude.ROLE_ASSISTANT, "{"})
 			systemTicker := os.Getenv(ENV_TWITTER_COMMUNITY_TICKER)
 
 			startTime := time.Now()
@@ -146,17 +147,17 @@ func FirstStepHandler(newMessageCh chan twitterapi.NewMessage, fudChannel chan t
 
 		requestUUID := uuid.New().String()
 
-		messages := ClaudeMessages{}
+		messages := claude.ClaudeMessages{}
 
 		if newMessage.GrandParentTweet.ID != "" {
-			messages = append(messages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.GrandParentTweet.Author + ":" + newMessage.GrandParentTweet.Text})
-			messages = append(messages, ClaudeMessage{ROLE_USER, "reply in thread: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+			messages = append(messages, claude.ClaudeMessage{claude.ROLE_USER, "the main post is: " + newMessage.GrandParentTweet.Author + ":" + newMessage.GrandParentTweet.Text})
+			messages = append(messages, claude.ClaudeMessage{claude.ROLE_USER, "reply in thread: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
 		} else {
-			messages = append(messages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+			messages = append(messages, claude.ClaudeMessage{claude.ROLE_USER, "the main post is: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
 		}
 
-		messages = append(messages, ClaudeMessage{ROLE_USER, "user reply being analyzed: " + newMessage.Author.UserName + ":" + newMessage.Text})
-		messages = append(messages, ClaudeMessage{ROLE_ASSISTANT, "{"})
+		messages = append(messages, claude.ClaudeMessage{claude.ROLE_USER, "user reply being analyzed: " + newMessage.Author.UserName + ":" + newMessage.Text})
+		messages = append(messages, claude.ClaudeMessage{claude.ROLE_ASSISTANT, "{"})
 
 		startTime := time.Now()
 		resp, err := claudeApi.SendMessage(messages, fmt.Sprintf("%s\n<instruction>you must analyze %s user messages in the context of the full thread</instruction>", string(systemPromptFirstStep), newMessage.Author.UserName))

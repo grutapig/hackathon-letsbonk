@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/grutapig/hackaton/claude"
 	"github.com/grutapig/hackaton/twitterapi"
 	"log"
 	"os"
 	"time"
 )
 
-func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUDAlertNotification, twitterApi *twitterapi.TwitterAPIService, claudeApi *ClaudeApi, systemPromptSecondStep []byte, ticker string, dbService *DatabaseService, loggingService *LoggingService) {
+func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUDAlertNotification, twitterApi *twitterapi.TwitterAPIService, claudeApi *claude.ClaudeApi, systemPromptSecondStep []byte, ticker string, dbService *DatabaseService, loggingService *LoggingService) {
 
 	requestUUID := uuid.New().String()
 
@@ -174,14 +175,14 @@ func SecondStepHandler(newMessage twitterapi.NewMessage, notificationCh chan FUD
 	claudeMessages := PrepareClaudeSecondStepRequest(userTickerMentions, followers, followings, dbService, userCommunityActivity)
 
 	if newMessage.GrandParentTweet.ID != "" {
-		claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.GrandParentTweet.Author + ":" + newMessage.GrandParentTweet.Text})
-		claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "reply in thread: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+		claudeMessages = append(claudeMessages, claude.ClaudeMessage{claude.ROLE_USER, "the main post is: " + newMessage.GrandParentTweet.Author + ":" + newMessage.GrandParentTweet.Text})
+		claudeMessages = append(claudeMessages, claude.ClaudeMessage{claude.ROLE_USER, "reply in thread: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
 	} else {
-		claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "the main post is: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
+		claudeMessages = append(claudeMessages, claude.ClaudeMessage{claude.ROLE_USER, "the main post is: " + newMessage.ParentTweet.Author + ":" + newMessage.ParentTweet.Text})
 	}
 
-	claudeMessages = append(claudeMessages, ClaudeMessage{ROLE_USER, "user reply being analyzed: " + newMessage.Author.UserName + ":" + newMessage.Text})
-	claudeMessages = append(claudeMessages, ClaudeMessage{Role: ROLE_ASSISTANT, Content: "{"})
+	claudeMessages = append(claudeMessages, claude.ClaudeMessage{claude.ROLE_USER, "user reply being analyzed: " + newMessage.Author.UserName + ":" + newMessage.Text})
+	claudeMessages = append(claudeMessages, claude.ClaudeMessage{Role: claude.ROLE_ASSISTANT, Content: "{"})
 	pretty, _ := json.MarshalIndent(claudeMessages, "", "\t")
 	fmt.Println("send to analyze:", string(pretty))
 	//fmt.Println("send to analyze:")

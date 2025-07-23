@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/grutapig/hackaton/claude"
 	"github.com/grutapig/hackaton/twitterapi"
 	"github.com/grutapig/hackaton/twitterapi_reverse"
 	"log"
@@ -17,7 +18,7 @@ import (
 type TwitterBotService struct {
 	twitterAPI      *twitterapi.TwitterAPIService
 	twitterReverse  *twitterapi_reverse.TwitterReverseService
-	claudeAPI       *ClaudeApi
+	claudeAPI       *claude.ClaudeApi
 	databaseService *DatabaseService
 	botTag          string
 	authSession     string
@@ -28,7 +29,7 @@ type TwitterBotService struct {
 	monitoringMutex sync.Mutex
 }
 
-func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, twitterReverse *twitterapi_reverse.TwitterReverseService, databaseService *DatabaseService, claudeApi *ClaudeApi) *TwitterBotService {
+func NewTwitterBotService(twitterAPI *twitterapi.TwitterAPIService, twitterReverse *twitterapi_reverse.TwitterReverseService, databaseService *DatabaseService, claudeApi *claude.ClaudeApi) *TwitterBotService {
 	botTag := os.Getenv(ENV_TWITTER_BOT_TAG)
 	if botTag == "" {
 		panic("ENV_TWITTER_BOT_TAG environment variable is not set")
@@ -231,6 +232,10 @@ func (t *TwitterBotService) respondToTweet(tweet twitterapi.Tweet) error {
 		log.Printf("mentioned user cannot be current bot: %s", text)
 		return nil
 	}
+	if cacheData == "" {
+		log.Printf("No cached data, so just ignore this %s with tweet %s, by @%s", tweet.Id, tweet.Text, tweet.Author.UserName)
+		return nil
+	}
 
 	responseText, err := t.generateClaudeResponse(text, repliedMessage, cacheData, isMessageEvaluation, mentionedUser, tweet.Author.UserName)
 	if err != nil {
@@ -356,21 +361,21 @@ If message ignored add the keyword in the response: NOTHING_ASK.
 		userPrompt = fmt.Sprintf("mentioned user: '%s'\nmentioned user data:\n%s", mentionedUser, cacheData)
 	}
 
-	request := ClaudeMessages{
+	request := claude.ClaudeMessages{
 		{
-			Role:    ROLE_USER,
+			Role:    claude.ROLE_USER,
 			Content: userPrompt,
 		},
 		{
-			Role:    ROLE_USER,
+			Role:    claude.ROLE_USER,
 			Content: fmt.Sprintf("User '%s' originalMessage:", authorUsername),
 		},
 		{
-			Role:    ROLE_USER,
+			Role:    claude.ROLE_USER,
 			Content: originalMessage,
 		},
 		{
-			Role:    ROLE_USER,
+			Role:    claude.ROLE_USER,
 			Content: "give me short finished answer to post tweet one sentence.",
 		},
 	}

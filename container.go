@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/grutapig/hackaton/claude"
 	"github.com/grutapig/hackaton/twitterapi_reverse"
 	"os"
 
@@ -86,8 +87,8 @@ func ProvideChannels() *Channels {
 	}
 }
 
-func ProvideClaudeAPI(config *Config) (*ClaudeApi, error) {
-	return NewClaudeClient(config.ClaudeAPIKey, config.ProxyClaudeDSN, CLAUDE_MODEL)
+func ProvideClaudeAPI(config *Config) (*claude.ClaudeApi, error) {
+	return claude.NewClaudeClient(config.ClaudeAPIKey, config.ProxyClaudeDSN, claude.CLAUDE_MODEL)
 }
 
 func ProvideTwitterAPI(config *Config) *twitterapi.TwitterAPIService {
@@ -106,7 +107,7 @@ func ProvideDatabaseService(config *Config) (*DatabaseService, error) {
 func ProvideLoggingService(config *Config) (*LoggingService, error) {
 	return NewLoggingService(config.LoggingDBPath)
 }
-func ProvideTwitterBotService(twitterapiService *twitterapi.TwitterAPIService, dbService *DatabaseService, claudeApi *ClaudeApi, twitterReverseService *twitterapi_reverse.TwitterReverseService) (*TwitterBotService, error) {
+func ProvideTwitterBotService(twitterapiService *twitterapi.TwitterAPIService, dbService *DatabaseService, claudeApi *claude.ClaudeApi, twitterReverseService *twitterapi_reverse.TwitterReverseService) (*TwitterBotService, error) {
 	return NewTwitterBotService(twitterapiService, twitterReverseService, dbService, claudeApi), nil
 }
 

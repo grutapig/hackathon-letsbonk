@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/grutapig/hackaton/claude"
 	"github.com/grutapig/hackaton/twitterapi"
 	"github.com/grutapig/hackaton/twitterapi_reverse"
 	"github.com/joho/godotenv"
@@ -112,18 +113,18 @@ func initializeData(dbService *DatabaseService, twitterApi *twitterapi.TwitterAP
 	}
 }
 
-func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, followers *twitterapi.UserFollowersResponse, followings *twitterapi.UserFollowingsResponse, dbService *DatabaseService, communityActivity *UserCommunityActivity) ClaudeMessages {
-	claudeMessages := ClaudeMessages{}
+func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, followers *twitterapi.UserFollowersResponse, followings *twitterapi.UserFollowingsResponse, dbService *DatabaseService, communityActivity *UserCommunityActivity) claude.ClaudeMessages {
+	claudeMessages := claude.ClaudeMessages{}
 
 	if userTickerData != nil {
 		userDataJSON, _ := json.Marshal(userTickerData)
-		claudeMessages = append(claudeMessages, ClaudeMessage{
-			Role:    ROLE_USER,
+		claudeMessages = append(claudeMessages, claude.ClaudeMessage{
+			Role:    claude.ROLE_USER,
 			Content: fmt.Sprintf("USER'S TICKER MENTIONS AND REPLIES:\n%s", string(userDataJSON)),
 		})
 	} else {
-		claudeMessages = append(claudeMessages, ClaudeMessage{
-			Role:    ROLE_USER,
+		claudeMessages = append(claudeMessages, claude.ClaudeMessage{
+			Role:    claude.ROLE_USER,
 			Content: "USER'S TICKER MENTIONS AND REPLIES: No ticker mentions found",
 		})
 	}
@@ -151,26 +152,26 @@ func PrepareClaudeSecondStepRequest(userTickerData *UserTickerMentionsData, foll
 		}
 
 		friendsJSON, _ := json.Marshal(friendsAnalysis)
-		claudeMessages = append(claudeMessages, ClaudeMessage{
-			Role:    ROLE_USER,
+		claudeMessages = append(claudeMessages, claude.ClaudeMessage{
+			Role:    claude.ROLE_USER,
 			Content: fmt.Sprintf("USER'S FRIENDS FUD ANALYSIS:\n%s", string(friendsJSON)),
 		})
 	} else {
-		claudeMessages = append(claudeMessages, ClaudeMessage{
-			Role:    ROLE_USER,
+		claudeMessages = append(claudeMessages, claude.ClaudeMessage{
+			Role:    claude.ROLE_USER,
 			Content: "USER'S FRIENDS FUD ANALYSIS: No friends found",
 		})
 	}
 
 	if communityActivity != nil && len(communityActivity.ThreadGroups) > 0 {
 		communityActivityJSON, _ := json.Marshal(communityActivity)
-		claudeMessages = append(claudeMessages, ClaudeMessage{
-			Role:    ROLE_USER,
+		claudeMessages = append(claudeMessages, claude.ClaudeMessage{
+			Role:    claude.ROLE_USER,
 			Content: fmt.Sprintf("USER'S COMMUNITY ACTIVITY (ALL POSTS AND REPLIES GROUPED BY THREADS):\n%s", string(communityActivityJSON)),
 		})
 	} else {
-		claudeMessages = append(claudeMessages, ClaudeMessage{
-			Role:    ROLE_USER,
+		claudeMessages = append(claudeMessages, claude.ClaudeMessage{
+			Role:    claude.ROLE_USER,
 			Content: "USER'S COMMUNITY ACTIVITY: No activity found in community",
 		})
 	}
