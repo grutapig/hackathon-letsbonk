@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"time"
 )
@@ -336,7 +335,6 @@ func (s *TwitterReverseService) GetNotifications() (*NotificationsResponse, erro
 	if err != nil {
 		return nil, fmt.Errorf("error on make request GetNotifications: %s", err)
 	}
-	os.WriteFile("qwe.json", body, 0655)
 	notificationsResponse := &NotificationsResponse{}
 	err = json.Unmarshal(body, notificationsResponse)
 	if err != nil {

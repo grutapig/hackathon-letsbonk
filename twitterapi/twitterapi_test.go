@@ -108,7 +108,7 @@ func TestTwitterAPIService_PostTweet(t *testing.T) {
 	api := NewTwitterAPIService(os.Getenv(ENV_TWITTER_API_KEY), os.Getenv(ENV_TWITTER_API_BASE_URL), os.Getenv(ENV_PROXY_DSN))
 	postTweetResponse, err := api.PostTweet(PostTweetRequest{
 		AuthSession: os.Getenv(ENV_TWITTER_AUTH),
-		TweetText: `@yumang93587 is presumably a professional FUD operator using Trojan Horse tactics - started as supportive community member but evolved into systematically attacking key figures like you with false promise accusations. Classic coordinated undermining strategy! 🐷🚨
+		TweetText: `hi all!
 `,
 		QuoteTweetId:     "",
 		InReplyToTweetId: "",

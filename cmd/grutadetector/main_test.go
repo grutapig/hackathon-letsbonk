@@ -6,6 +6,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/grutapig/hackaton/claude"
 	"github.com/grutapig/hackaton/twitterapi"
+	"github.com/grutapig/hackaton/twitterapi_reverse"
 	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 	"os"
@@ -71,7 +72,7 @@ func TestAnalyzeHistory(t *testing.T) {
 			Content: "last message: I bought many DARk coins",
 		},
 	}
-	response, err := claudeApi.SendMessage(claudeMessages, "You are lier detector, you have to check all user messages history, and detect lie in the last message if you can. Перечисли цитаты, которые подтвердят твое мнение.")
+	response, err := claudeApi.SendMessage(claudeMessages, "You are lier detector, you have to check all user messages history, and detect lie in the last message if you can.")
 	assert.NoError(t, err)
 	fmt.Println(response)
 	os.WriteFile("claude.txt", []byte(response.Content[0].Text), 0655)
@@ -87,5 +88,34 @@ func TestSendTelegramNotify(t *testing.T) {
 		msg.ParseMode = tgbotapi.ModeMarkdown
 		resp, err := bot.Send(msg)
 		fmt.Println(resp, err)
+	}
+}
+
+func TestSendTweet(t *testing.T) {
+	godotenv.Load()
+	api := twitterapi.NewTwitterAPIService(os.Getenv("twitter_api_key"), "https://api.twitterapi.io", os.Getenv(twitterapi.ENV_PROXY_DSN))
+
+	postTweetResponse, err := api.PostTweet(twitterapi.PostTweetRequest{
+		AuthSession: os.Getenv(twitterapi.ENV_TWITTER_AUTH),
+		TweetText: `hi all!
+`,
+		QuoteTweetId:     "",
+		InReplyToTweetId: "",
+		MediaId:          "",
+		Proxy:            os.Getenv(twitterapi.ENV_PROXY_DSN),
+	})
+	fmt.Println(postTweetResponse, err)
+}
+func TestMonitoring(t *testing.T) {
+	godotenv.Load()
+	auth := twitterapi_reverse.NewTwitterAuth(os.Getenv(twitterapi_reverse.ENV_TWITTER_REVERSE_AUTHORIZATION), os.Getenv(twitterapi_reverse.ENV_TWITTER_REVERSE_CSRF_TOKEN), os.Getenv(twitterapi_reverse.ENV_TWITTER_REVERSE_COOKIE))
+	service := twitterapi_reverse.NewTwitterReverseApi(auth, os.Getenv(twitterapi.ENV_PROXY_DSN), false)
+	tweets, err := service.GetNotificationsSimple()
+	assert.NoError(t, err)
+	currentBotname := os.Getenv("twitter_bot_tag")
+	for i, tweet := range tweets {
+		if tweet.Author.Username != currentBotname {
+			fmt.Println(i, "|", tweet.Text, "|", tweet.CreatedAt, "|", tweet.Author.Username, "| reply:", tweet.ReplyToID)
+		}
 	}
 }
