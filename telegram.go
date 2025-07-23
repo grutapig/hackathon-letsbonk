@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/grutapig/hackaton/twitterapi"
 	"log"
 	"net/http"
@@ -36,6 +37,7 @@ type TelegramService struct {
 	ticker                 string
 	analysisChannel        chan twitterapi.NewMessage
 	loggingService         *LoggingService
+	bot                    *tgbotapi.BotAPI
 }
 
 func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, formatter *NotificationFormatter, dbService *DatabaseService, analysisChannel chan twitterapi.NewMessage) (*TelegramService, error) {
@@ -52,8 +54,12 @@ func NewTelegramService(apiKey string, proxyDSN string, initialChatIDs string, f
 		Transport: transport,
 		Timeout:   30 * time.Second,
 	}
-
+	bot, err := tgbotapi.NewBotAPI(apiKey)
+	if err != nil {
+		return nil, fmt.Errorf("cannot initiate telegram bot, err: %s", err)
+	}
 	service := &TelegramService{
+		bot:             bot,
 		apiKey:          apiKey,
 		client:          client,
 		chatIDs:         make(map[int64]bool),
@@ -121,18 +127,13 @@ func (t *TelegramService) SetAnalysisServices(twitterApi interface{}, claudeApi 
 }
 
 func (t *TelegramService) StartListening() {
-	if t.isRunning {
-		return
-	}
-	t.isRunning = true
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+	updates := t.bot.GetUpdatesChan(u)
 
 	go func() {
-		for t.isRunning {
-			err := t.processUpdates()
-			if err != nil {
-				log.Printf("Error processing Telegram updates: %v", err)
-				time.Sleep(5 * time.Second)
-			}
+		for update := range updates {
+			go t.HandleUpdate(update)
 		}
 	}()
 
@@ -161,111 +162,105 @@ func (t *TelegramService) isAdminChat(chatID int64) bool {
 	return false
 }
 
-func (t *TelegramService) processUpdates() error {
-	updates, err := t.getUpdates()
-	if err != nil {
-		return err
+func (t *TelegramService) HandleUpdate(update tgbotapi.Update) {
+	chatID := update.Message.Chat.ID
+	t.chatMutex.Lock()
+	isNewChat := !t.chatIDs[chatID]
+	if isNewChat {
+		t.chatIDs[chatID] = true
+		log.Printf("New Telegram chat registered: %d (from: %s)", chatID, update.Message.From.FirstName)
+	}
+	t.chatMutex.Unlock()
+
+	if isNewChat {
+		info := fmt.Sprintf("✅ Chat registered!\nChat ID: %d\nUser: %s %s\nUsername: @%s", chatID, update.Message.From.FirstName, update.Message.From.LastName, update.Message.From.UserName)
+		go t.SendMessage(chatID, info)
 	}
 
-	for _, update := range updates {
-		t.lastOffset = update.UpdateID + 1
+	if update.Message.Text != "" {
+		text := strings.TrimSpace(update.Message.Text)
 
-		go func(update TelegramUpdate) {
-			chatID := update.Message.Chat.ID
-			t.chatMutex.Lock()
-			isNewChat := !t.chatIDs[chatID]
-			if isNewChat {
-				t.chatIDs[chatID] = true
-				log.Printf("New Telegram chat registered: %d (from: %s)", chatID, update.Message.From.FirstName)
+		parts := strings.Fields(text)
+		if len(parts) == 0 {
+			return
+		}
+
+		command := parts[0]
+		args := parts[1:]
+
+		switch {
+		case strings.HasPrefix(command, "/reset"):
+			if strings.Contains(os.Getenv(ENV_TELEGRAM_ADMIN_CHAT_ID), strconv.Itoa(int(chatID))) {
+				t.SendMessage(chatID, "restarting bot")
+				panic("bot restart command from telegram")
+			} else {
+				t.SendMessage(chatID, "only admins can restart bot")
 			}
-			t.chatMutex.Unlock()
-
-			if isNewChat {
-				info := fmt.Sprintf("✅ Chat registered!\nChat ID: %d\nUser: %s %s\nUsername: @%s", chatID, update.Message.From.FirstName, update.Message.From.LastName, update.Message.From.Username)
-				go t.SendMessage(chatID, info)
+			return
+		case strings.HasPrefix(command, "/detail_"):
+			t.handleDetailCommand(chatID, text)
+		case strings.HasPrefix(command, "/history_"):
+			t.handleHistoryCommand(chatID, text)
+		case strings.HasPrefix(command, "/export_"):
+			t.handleExportCommand(chatID, text)
+		case strings.HasPrefix(command, "/ticker_history_"):
+			t.handleTickerHistoryCommand(chatID, text)
+		case strings.HasPrefix(command, "/cache_"):
+			t.handleCacheCommand(chatID, text)
+		case command == "/analyze_all":
+			if !t.isAdminChat(chatID) {
+				t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
+				return
 			}
-
-			if update.Message.Text != "" {
-				text := strings.TrimSpace(update.Message.Text)
-
-				parts := strings.Fields(text)
-				if len(parts) == 0 {
-					return
-				}
-
-				command := parts[0]
-				args := parts[1:]
-
-				switch {
-				case strings.HasPrefix(command, "/detail_"):
-					t.handleDetailCommand(chatID, text)
-				case strings.HasPrefix(command, "/history_"):
-					t.handleHistoryCommand(chatID, text)
-				case strings.HasPrefix(command, "/export_"):
-					t.handleExportCommand(chatID, text)
-				case strings.HasPrefix(command, "/ticker_history_"):
-					t.handleTickerHistoryCommand(chatID, text)
-				case strings.HasPrefix(command, "/cache_"):
-					t.handleCacheCommand(chatID, text)
-				case command == "/analyze_all":
-					if !t.isAdminChat(chatID) {
-						t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
-						return
-					}
-					t.handleAnalyzeAllCommand(chatID)
-					return
-				case strings.HasPrefix(command, "/analyze_"):
-					t.handleAnalyzeCommand(chatID, text)
-				case command == "/search":
-					t.handleSearchCommand(chatID, args)
-				case command == "/fudlist" || strings.HasPrefix(command, "/fudlist_"):
-					t.handleFudListCommand(chatID, args, command)
-				case command == "/goodlist" || strings.HasPrefix(command, "/goodlist_"):
-					t.handleGoodListCommand(chatID, args, command)
-				case command == "/exportfudlist":
-					t.handleExportFudListCommand(chatID)
-				case command == "/topfud" || strings.HasPrefix(command, "/topfud_"):
-					t.handleTopFudCommand(chatID, args, command)
-				case command == "/tasks":
-					t.handleTasksCommand(chatID)
-				case command == "/last5":
-					t.handleLast5MessagesCommand(chatID)
-				case command == "/u":
-					t.SendMessage(chatID, fmt.Sprintf("users: %d", len(t.chatIDs)))
-				case command == "/top20_analyze":
-					if !t.isAdminChat(chatID) {
-						t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
-						return
-					}
-					t.handleTop20AnalyzeCommand(chatID)
-				case command == "/top100_analyze":
-					if !t.isAdminChat(chatID) {
-						t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
-						return
-					}
-					t.handleTop100AnalyzeCommand(chatID)
-				case command == "/batch_analyze":
-					t.handleBatchAnalyzeCommand(chatID, args)
-				case command == "/update_reverse_auth":
-					if !t.isAdminChat(chatID) {
-						t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
-						return
-					}
-					t.handleUpdateReverseAuthCommand(chatID, text)
-				case command == "/start":
-					t.handleStartCommand(chatID, strings.Join(args, ""))
-				case command == "/help":
-					t.handleHelpCommand(chatID)
-				default:
-					t.handleHelpCommand(chatID)
-				}
+			t.handleAnalyzeAllCommand(chatID)
+			return
+		case strings.HasPrefix(command, "/analyze_"):
+			t.handleAnalyzeCommand(chatID, text)
+		case command == "/search":
+			t.handleSearchCommand(chatID, args)
+		case command == "/fudlist" || strings.HasPrefix(command, "/fudlist_"):
+			t.handleFudListCommand(chatID, args, command)
+		case command == "/goodlist" || strings.HasPrefix(command, "/goodlist_"):
+			t.handleGoodListCommand(chatID, args, command)
+		case command == "/exportfudlist":
+			t.handleExportFudListCommand(chatID)
+		case command == "/topfud" || strings.HasPrefix(command, "/topfud_"):
+			t.handleTopFudCommand(chatID, args, command)
+		case command == "/tasks":
+			t.handleTasksCommand(chatID)
+		case command == "/last5":
+			t.handleLast5MessagesCommand(chatID)
+		case command == "/u":
+			t.SendMessage(chatID, fmt.Sprintf("users: %d", len(t.chatIDs)))
+		case command == "/top20_analyze":
+			if !t.isAdminChat(chatID) {
+				t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
+				return
 			}
-		}(update)
+			t.handleTop20AnalyzeCommand(chatID)
+		case command == "/top100_analyze":
+			if !t.isAdminChat(chatID) {
+				t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
+				return
+			}
+			t.handleTop100AnalyzeCommand(chatID)
+		case command == "/batch_analyze":
+			t.handleBatchAnalyzeCommand(chatID, args)
+		case command == "/update_reverse_auth":
+			if !t.isAdminChat(chatID) {
+				t.SendMessage(chatID, "❌ Access denied. This command is restricted to administrators only.")
+				return
+			}
+			t.handleUpdateReverseAuthCommand(chatID, text)
+		case command == "/start":
+			t.handleStartCommand(chatID, strings.Join(args, ""))
+		case command == "/help":
+			t.handleHelpCommand(chatID)
+		default:
+			t.handleHelpCommand(chatID)
+		}
 	}
-
-	return nil
 }
-
 func (t *TelegramService) generateTaskID() (string, error) {
 	bytes := make([]byte, 8)
 	_, err := rand.Read(bytes)
