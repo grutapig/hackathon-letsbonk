@@ -244,7 +244,7 @@ func (s *TwitterAPIService) AdvancedSearch(request AdvancedSearchRequest) (*Adva
 	}
 
 	if request.QueryType != "" {
-		params["query_type"] = request.QueryType
+		params["queryType"] = request.QueryType
 	}
 
 	if request.Cursor != "" {

@@ -98,10 +98,36 @@ func getUserTweets(username string) ([]twitterapi_reverse.SimpleTweet, error) {
 
 		cursor = resp.NextCursor
 		for _, tweet := range resp.Tweets {
+			twitterTime, _ := twitterapi_reverse.ParseTwitterTime(tweet.CreatedAt)
 			tweets = append(tweets, twitterapi_reverse.SimpleTweet{
-				TweetID: tweet.Id,
-				Text:    tweet.Text,
+				TweetID:   tweet.Id,
+				Text:      tweet.Text,
+				CreatedAt: twitterTime,
 			})
+		}
+	}
+	cursor = ""
+	if len(tweets) == 0 {
+		for i := 0; i < userSearchPages; i++ {
+			resp, err := twitterApi.AdvancedSearch(twitterapi.AdvancedSearchRequest{
+				Query:     "from:" + username,
+				QueryType: twitterapi.TOP,
+				Cursor:    cursor,
+			})
+
+			if err != nil || len(resp.Tweets) == 0 || resp.NextCursor == "" {
+				break
+			}
+
+			cursor = resp.NextCursor
+			for _, tweet := range resp.Tweets {
+				twitterTime, _ := twitterapi_reverse.ParseTwitterTime(tweet.CreatedAt)
+				tweets = append(tweets, twitterapi_reverse.SimpleTweet{
+					TweetID:   tweet.Id,
+					Text:      tweet.Text,
+					CreatedAt: twitterTime,
+				})
+			}
 		}
 	}
 
@@ -114,10 +140,16 @@ func analyzeUser(username string, lastMessage string, question string) (string, 
 		return "", err
 	}
 
-	messages := []string{}
+	messages := [][2]string{}
 	for _, tweet := range tweets {
-		messages = append(messages, tweet.Text)
+		messages = append(messages, [2]string{tweet.Text, tweet.CreatedAt.Format(time.RFC3339)})
 	}
+
+	if len(messages) == 0 {
+		sendTelegramMessage(fmt.Sprintln("no history found, skip this", len(messages), username, question))
+		return "", fmt.Errorf("no messages history found for this user")
+	}
+	sendTelegramMessage(fmt.Sprintf("found history count %d, from %s to %s", len(tweets), tweets[0].CreatedAt.Format(time.RFC3339), tweets[len(tweets)-1].CreatedAt.Format(time.RFC3339)))
 
 	data, _ := json.Marshal(messages)
 	claudeMessages := claude.ClaudeMessages{
@@ -134,8 +166,11 @@ func analyzeUser(username string, lastMessage string, question string) (string, 
 			Content: "moderator question on last message: " + question,
 		},
 	}
-
-	response, err := claudeApi.SendMessage(claudeMessages, "You are lier detector, you have to check all user messages history, and detect lie in the last message if you can. List quotes that will confirm your opinion. The answer should be in the moderator's language, but only english or chinese. The answer should fit in one tweet of 180 characters. Use only english or chinese language.")
+	prompt, err := os.ReadFile("prompt.txt")
+	if err != nil {
+		return "", fmt.Errorf("cannot read prompt.txt, err: %s", err)
+	}
+	response, err := claudeApi.SendMessage(claudeMessages, string(prompt))
 	if err != nil {
 		return "", err
 	}
@@ -183,7 +218,7 @@ func processNotification(tweet twitterapi_reverse.SimpleTweet) {
 		return
 	}
 
-	err = postTweet(analysis, tweet.TweetID)
+	//err = postTweet(analysis, tweet.TweetID)
 	if err != nil {
 		log.Printf("Error posting tweet: %v", err)
 		sendTelegramMessage(fmt.Sprintf("Error posting tweet: %v, tweet: %s", err, tweet.TweetID))

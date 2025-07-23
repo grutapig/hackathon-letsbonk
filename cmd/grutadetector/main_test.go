@@ -22,13 +22,13 @@ type Tweet struct {
 func TestGetHistory(t *testing.T) {
 	godotenv.Load()
 	ts := twitterapi.NewTwitterAPIService(os.Getenv("twitter_api_key"), "https://api.twitterapi.io", os.Getenv("proxy_dsn"))
-	username := "a1lon9"
+	username := "ericvv8740"
 	var tweets []Tweet
 	var cursor string
 	for i := 0; i < 100; i++ {
 		resp, err := ts.AdvancedSearch(twitterapi.AdvancedSearchRequest{
 			Query:     "from:" + username,
-			QueryType: twitterapi.LATEST,
+			QueryType: twitterapi.TOP,
 			Cursor:    cursor,
 		})
 		if err != nil || len(resp.Tweets) == 0 || resp.NextCursor == "" {
@@ -45,7 +45,7 @@ func TestGetHistory(t *testing.T) {
 	}
 	data, err := json.Marshal(tweets)
 	assert.NoError(t, err)
-	os.WriteFile("a1lon9.json", data, 0655)
+	os.WriteFile("ericvv8740.json", data, 0655)
 }
 func TestAnalyzeHistory(t *testing.T) {
 	godotenv.Load()
