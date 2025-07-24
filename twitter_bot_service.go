@@ -321,11 +321,11 @@ func (t *TwitterBotService) prepareCacheDataForClaude(username string) string {
 
 	if cached != nil {
 		data := map[string]interface{}{
-			"username":        cached.Username,
-			"is_fud_user":     cached.IsFUDUser,
-			"fud_type":        cached.FUDType,
-			"fud_probability": cached.FUDProbability,
-			"user_risk_level": cached.UserRiskLevel,
+			"username":    cached.Username,
+			"is_fud_user": cached.IsFUDUser,
+			"fud_type":    cached.FUDType,
+			//"fud_probability": cached.FUDProbability,
+			//"user_risk_level": cached.UserRiskLevel,
 			"user_summary":    cached.UserSummary,
 			"decision_reason": cached.DecisionReason,
 		}
